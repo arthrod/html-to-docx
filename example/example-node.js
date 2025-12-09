@@ -4,7 +4,7 @@ const fs = require('fs');
 // const HTMLtoDOCX = require('html-to-docx');
 const HTMLtoDOCX = require('../dist/html-to-docx.umd');
 
-const filePath = './example.docx';
+const filePath = './example-node.docx';
 
 const htmlString = `<!DOCTYPE html>
 <html lang="en">
@@ -53,6 +53,42 @@ const htmlString = `<!DOCTYPE html>
                 style="border: 2px solid red; margin: 10px;"
                 src="data:image/png;base64, iVBORw0KGgoAAAANSUhEUgAAAAUAAAAFCAYAAACNbyblAAAAHElEQVQI12P4//8/w38GIAXDIBKE0DHxgljNBAAO9TXL0Y4OHwAAAABJRU5ErkJggg=="
                 alt="Test image with border and margin"
+            />
+
+            <!-- SVG Image Tests (New Feature) -->
+            <h3>SVG Image Support</h3>
+            <p>Testing SVG images (automatically converted to PNG for maximum compatibility):</p>
+
+            <p>Simple SVG circle:</p>
+            <img
+                src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMDAiIGhlaWdodD0iMTAwIiB2aWV3Qm94PSIwIDAgMTAwIDEwMCI+CiAgPHJlY3Qgd2lkdGg9IjEwMCIgaGVpZ2h0PSIxMDAiIGZpbGw9IiNmMGYwZjAiLz4KICA8Y2lyY2xlIGN4PSI1MCIgY3k9IjUwIiByPSI0MCIgZmlsbD0iIzM0OThkYiIgc3Ryb2tlPSIjMmMzZTUwIiBzdHJva2Utd2lkdGg9IjIiLz4KPC9zdmc+"
+                alt="Blue circle SVG"
+                width="100"
+                height="100"
+            />
+
+            <p>SVG with different sizes:</p>
+            <img
+                src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIj4KICA8cmVjdCB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIGZpbGw9IiMyN2FlNjAiIHJ4PSI1Ii8+CiAgPHBhdGggZD0iTSAxNSAyNSBMIDIyIDMyIEwgMzUgMTgiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg=="
+                alt="Checkmark icon"
+                width="30"
+                height="30"
+            />
+            <img
+                src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIj4KICA8cmVjdCB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIGZpbGw9IiMyN2FlNjAiIHJ4PSI1Ii8+CiAgPHBhdGggZD0iTSAxNSAyNSBMIDIyIDMyIEwgMzUgMTgiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg=="
+                alt="Checkmark icon"
+                width="50"
+                height="50"
+            />
+
+            <p>Inline SVG icon: <img src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSI1MCIgaGVpZ2h0PSI1MCIgdmlld0JveD0iMCAwIDUwIDUwIj4KICA8cmVjdCB3aWR0aD0iNTAiIGhlaWdodD0iNTAiIGZpbGw9IiMyN2FlNjAiIHJ4PSI1Ii8+CiAgPHBhdGggZD0iTSAxNSAyNSBMIDIyIDMyIEwgMzUgMTgiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMyIgZmlsbD0ibm9uZSIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBzdHJva2UtbGluZWpvaW49InJvdW5kIi8+Cjwvc3ZnPg==" alt="Success" width="20" height="20" style="vertical-align: middle;" /> SVG works inline too!</p>
+
+            <p>SVG bar chart:</p>
+            <img
+                src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMDAiIGhlaWdodD0iMTUwIiB2aWV3Qm94PSIwIDAgMjAwIDE1MCI+CiAgPHJlY3Qgd2lkdGg9IjIwMCIgaGVpZ2h0PSIxNTAiIGZpbGw9IiNmZmZmZmYiLz4KICA8cmVjdCB4PSIyMCIgeT0iMTAwIiB3aWR0aD0iMzAiIGhlaWdodD0iNDAiIGZpbGw9IiMyZWNjNzEiLz4KICA8cmVjdCB4PSI2MCIgeT0iNzAiIHdpZHRoPSIzMCIgaGVpZ2h0PSI3MCIgZmlsbD0iIzNjOThlNyIvPgogIDxyZWN0IHg9IjEwMCIgeT0iNTAiIHdpZHRoPSIzMCIgaGVpZ2h0PSI5MCIgZmlsbD0iI2U3NGMzYyIvPgogIDxyZWN0IHg9IjE0MCIgeT0iMzAiIHdpZHRoPSIzMCIgaGVpZ2h0PSIxMTAiIGZpbGw9IiNmMzljMTIiLz4KICA8dGV4dCB4PSIxMDAiIHk9IjE1IiB0ZXh0LWFuY2hvcj0ibWlkZGxlIiBmb250LXNpemU9IjE0IiBmaWxsPSIjMzMzIj5TYWxlcyBDaGFydDwvdGV4dD4KPC9zdmc+"
+                alt="Sales chart"
+                width="200"
+                height="150"
             />
         </div>
         <div>
@@ -1892,25 +1928,141 @@ const htmlString = `<!DOCTYPE html>
             </tr>
           </tbody>
         </table>
+        
+        <!-- Test cases for PR #100 - TinyMCE image dimensions fix -->
+        <!-- Test image: Porsche 992 Turbo S - Original size: 5,807 × 2,817 pixels, 8.35 MB JPEG -->
+        <div class="page-break" style="page-break-after: always"></div>
+        <div>
+            <h2>Testing Image Width/Height Attribute Handling (Fix for TinyMCE dimensions)</h2>
+            <p>These test cases verify that width and height HTML attributes are properly honored in DOCX generation:</p>
+            <p><em>Test image original size: 5,807 × 2,817 pixels (8.35 MB JPEG)</em></p>
+            
+            <p><strong>Test 1:</strong> Image with explicit width and height attributes (should render as 100x100):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="100"
+                height="100"
+                alt="100x100 dimensions test"
+            />
+            
+            <p><strong>Test 2:</strong> Image with only width attribute (height should maintain aspect ratio):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="150"
+                alt="Width only test"
+            />
+            
+            <p><strong>Test 3:</strong> Image with only height attribute (width should maintain aspect ratio):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                height="80"
+                alt="Height only test"
+            />
+            
+            <p><strong>Test 4:</strong> Image with width/height and additional styles (TinyMCE scenario):</p>
+            <img
+                style="font-family: Calibri Light;"
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="120"
+                height="60"
+                alt="TinyMCE style with dimensions"
+            />
+            
+            <p><strong>Test 5:</strong> Image without dimensions (should use original image size - fallback behavior):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                alt="No dimensions - fallback test"
+            />
+            
+            <p><strong>Test 6:</strong> Larger image with custom dimensions (demonstrates actual resize):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/4/47/PNG_transparency_demonstration_1.png"
+                width="200"
+                height="100"
+                alt="Large image resized to 200x100"
+            />
+            
+            <h3>Unit Support Tests</h3>
+            <p><strong>Test 7:</strong> Image with pixel units (explicit px):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="180px"
+                height="90px"
+                alt="180px x 90px image"
+            />
+            
+            <p><strong>Test 8:</strong> Image with point units (pt):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="144pt"
+                height="72pt"
+                alt="144pt x 72pt image (192px x 96px equivalent)"
+            />
+            
+            <p><strong>Test 9:</strong> Image with centimeter units (cm):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="4cm"
+                height="2cm"
+                alt="4cm x 2cm image"
+            />
+            
+            <p><strong>Test 10:</strong> Image with inch units (in):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="1.5in"
+                height="0.75in"
+                alt="1.5in x 0.75in image"
+            />
+            
+            <p><strong>Test 11:</strong> Image with percentage units (% of original size):</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="10%"
+                height="10%"
+                alt="10% x 10% of original size"
+            />
+            
+            <p><strong>Test 12:</strong> Mixed units - width in cm, height in inches:</p>
+            <img
+                src="https://upload.wikimedia.org/wikipedia/commons/e/ee/Porsche_992_Turbo_S_1X7A0413.jpg"
+                width="3cm"
+                height="1in"
+                alt="3cm width, 1in height"
+            />
+        </div>
     </body>
 </html>`;
 
 (async () => {
-    const fileBuffer = await HTMLtoDOCX(htmlString, null, {
-        table: {
-            row: { cantSplit: true }, 
-            addSpacingAfter: true
-        },
-        footer: true,
-        pageNumber: true,
-        preprocessing: { skipHTMLMinify: false }
-    });
+  const fileBuffer = await HTMLtoDOCX(htmlString, null, {
+    table: {
+      row: { cantSplit: true },
+      addSpacingAfter: true,
+    },
+    footer: true,
+    pageNumber: true,
+    preprocessing: { skipHTMLMinify: false },
+    imageProcessing: {
+      // By default, shows a warning when sharp is not installed
+      // Uncomment to suppress the warning (useful for intentional native SVG mode):
+    //   suppressSharpWarning: true,
+    },
+    // ===================================================================
+    // WARNING: deterministicIds is ONLY for CI/CD testing purposes.
+    // DO NOT use this option in production.
+    // DO NOT change this line.
+    // This option makes image filenames sequential (image-0.png, image-1.png)
+    // instead of random UUIDs, allowing automated regression testing.
+    // ===================================================================
+    deterministicIds: process.env.DETERMINISTIC_IDS === 'true',
+  });
 
-    fs.writeFile(filePath, fileBuffer, (error) => {
-        if (error) {
-            console.log('Docx file creation failed');
-            return;
-        }
-        console.log('Docx file created successfully');
-    });
+  fs.writeFile(filePath, fileBuffer, (error) => {
+    if (error) {
+      console.log('Docx file creation failed');
+      return;
+    }
+    console.log('Docx file created successfully');
+  });
 })();

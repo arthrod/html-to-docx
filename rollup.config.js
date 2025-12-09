@@ -1,7 +1,7 @@
 import { nodeResolve as resolve } from '@rollup/plugin-node-resolve';
 import json from '@rollup/plugin-json';
 import commonjs from '@rollup/plugin-commonjs';
-import { terser } from 'rollup-plugin-terser';
+import terser from '@rollup/plugin-terser';
 import cleaner from 'rollup-plugin-cleaner';
 import builtins from 'rollup-plugin-node-builtins';
 
@@ -11,7 +11,7 @@ const isProduction = process.env.NODE_ENV === 'production';
 
 export default {
   input: 'index.js',
-  external: ['color-name', 'html-to-vdom', 'jszip', 'virtual-dom', 'xmlbuilder2', 'html-entities'],
+  external: ['color-name', 'jszip', 'xmlbuilder2', 'html-entities', 'lru-cache', 'htmlparser2', 'sharp'],
   plugins: [
     resolve(),
     json(),
@@ -38,6 +38,12 @@ export default {
       format: 'umd',
       name: 'HTMLToDOCX',
       sourcemap: !isProduction,
+      globals: {
+        htmlparser2: 'htmlparser2',
+        jszip: 'JSZip',
+        xmlbuilder2: 'xmlbuilder2',
+        'html-entities': 'htmlEntities',
+      },
       banner: `// ${meta.homepage} v${meta.version} Copyright ${new Date().getFullYear()} ${
         meta.author
       }`,
