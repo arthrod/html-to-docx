@@ -1,5 +1,9 @@
 import { create, fragment } from 'xmlbuilder2';
 import { nanoid } from 'nanoid';
+import { parseDataUrl, isSVG, convertSVGtoPNG, parseSVGDimensions } from './utils/image';
+
+// Track if we've already warned about missing sharp (show once per process)
+let sharpMissingWarningShown = false;
 
 import {
   generateCoreXML,
@@ -70,8 +74,30 @@ function generateSectionReferenceXML(documentXML, documentSectionType, objects, 
   }
 }
 
-function generateXMLString(xmlString) {
+function generateXMLString(xmlString, direction) {
   const xmlDocumentString = create({ encoding: 'UTF-8', standalone: true }, xmlString);
+
+  // RTL condition xml styles addition
+  if (direction === 'rtl') {
+    const rtlStyle = fragment({ namespaceAlias: { w: namespaces.w } })
+      .ele('@w', 'style')
+      .att('@w', 'type', 'paragraph')
+      .att('@w', 'styleId', 'RTLDefault')
+      .ele('@w', 'name')
+      .att('@w', 'val', 'RTL Default')
+      .up()
+      .ele('@w', 'pPr')
+      .ele('@w', 'jc')
+      .att('@w', 'val', 'right')
+      .up()
+      .ele('@w', 'bidi')
+      .up()
+      .up()
+      .up();
+
+    xmlDocumentString.root().import(rtlStyle);
+  }
+
   return xmlDocumentString.toString({ prettyPrint: true });
 }
 
@@ -116,6 +142,7 @@ class DocxDocument {
     this.htmlString = properties.htmlString;
     this.orientation = properties.orientation;
     this.pageSize = properties.pageSize || defaultDocumentOptions.pageSize;
+    this.deterministicIds = properties.deterministicIds || false;
 
     const isPortraitOrientation = this.orientation === defaultOrientation;
     const height = this.pageSize.height ? this.pageSize.height : landscapeHeight;
@@ -124,14 +151,18 @@ class DocxDocument {
     this.width = isPortraitOrientation ? width : height;
     this.height = isPortraitOrientation ? height : width;
 
-    const marginsObject = properties.margins;
-    this.margins =
-      // eslint-disable-next-line no-nested-ternary
-      marginsObject && Object.keys(marginsObject).length
-        ? marginsObject
-        : isPortraitOrientation
-        ? portraitMargins
-        : landscapeMargins;
+    const defaultMargins = isPortraitOrientation ? portraitMargins : landscapeMargins;
+    const marginsObject = properties.margins || {};
+
+    this.margins = {
+      top: marginsObject.top !== undefined ? marginsObject.top : defaultMargins.top,
+      right: marginsObject.right !== undefined ? marginsObject.right : defaultMargins.right,
+      bottom: marginsObject.bottom !== undefined ? marginsObject.bottom : defaultMargins.bottom,
+      left: marginsObject.left !== undefined ? marginsObject.left : defaultMargins.left,
+      header: marginsObject.header !== undefined ? marginsObject.header : defaultMargins.header,
+      footer: marginsObject.footer !== undefined ? marginsObject.footer : defaultMargins.footer,
+      gutter: marginsObject.gutter !== undefined ? marginsObject.gutter : defaultMargins.gutter,
+    };
 
     this.availableDocumentSpace = this.width - this.margins.left - this.margins.right;
     this.title = properties.title || '';
@@ -151,12 +182,21 @@ class DocxDocument {
     this.fontSize = properties.fontSize || defaultFontSize;
     this.complexScriptFontSize = properties.complexScriptFontSize || defaultFontSize;
     this.lang = properties.lang || defaultLang;
+    this.direction = properties.direction || 'ltr';
     this.tableRowCantSplit =
       (properties.table && properties.table.row && properties.table.row.cantSplit) || false;
+    this.tableBorders =
+      (properties.table && properties.table.borderOptions) ||
+      defaultDocumentOptions.table.borderOptions;
     this.pageNumber = properties.pageNumber || false;
     this.skipFirstHeaderFooter = properties.skipFirstHeaderFooter || false;
     this.lineNumber = properties.lineNumber ? properties.lineNumberOptions : null;
-
+    this.addSpacingAfterTable =
+      properties.table && properties.table.addSpacingAfter !== undefined
+        ? properties.table.addSpacingAfter
+        : defaultDocumentOptions.table.addSpacingAfter;
+    this.heading = properties.heading || defaultDocumentOptions.heading;
+    this.imageProcessing = properties.imageProcessing || defaultDocumentOptions.imageProcessing;
     this.lastNumberingId = 0;
     this.lastMediaId = 0;
     this.lastHeaderId = 0;
@@ -262,7 +302,14 @@ class DocxDocument {
 
   generateStylesXML() {
     return generateXMLString(
-      generateStylesXML(this.font, this.fontSize, this.complexScriptFontSize, this.lang)
+      generateStylesXML(
+        this.font,
+        this.fontSize,
+        this.complexScriptFontSize,
+        this.lang,
+        this.heading
+      ),
+      this.direction
     );
   }
 
@@ -325,23 +372,30 @@ class DocxDocument {
     const abstractNumberingFragments = fragment();
     const numberingFragments = fragment();
 
+    // The way we generate the numbering Objects is a bit different from the original implementation
+    // If there are nested lists in original document or html, instead of providing the start value for the lists
+    // we generate a new list for each ul or ol tag we encounter.
+    // FIXME: This is not the best way to handle nested lists, we should find a better way to handle this
+    // The current implementation is a quick fix to handle nested lists
+    // For every ul or ol encountered, all levels have the same startValue
+    // This helps in handling the indentation for that particular level in the transformation
     this.numberingObjects.forEach(({ numberingId, type, properties }) => {
       const abstractNumberingFragment = fragment({ namespaceAlias: { w: namespaces.w } })
         .ele('@w', 'abstractNum')
         .att('@w', 'abstractNumId', String(numberingId));
 
-      [...Array(8).keys()].forEach((level) => {
+      let startValue = 1;
+      if (properties.attributes && properties.attributes['data-start']) {
+        startValue = properties.attributes['data-start'];
+      } else if (properties.start) {
+        startValue = properties.start;
+      }
+      [...Array(9).keys()].forEach((level) => {
         const levelFragment = fragment({ namespaceAlias: { w: namespaces.w } })
           .ele('@w', 'lvl')
           .att('@w', 'ilvl', level)
           .ele('@w', 'start')
-          .att(
-            '@w',
-            'val',
-            type === 'ol'
-              ? (properties.attributes && properties.attributes['data-start']) || 1
-              : '1'
-          )
+          .att('@w', 'val', type === 'ol' ? startValue : '1')
           .up()
           .ele('@w', 'numFmt')
           .att(
@@ -358,7 +412,9 @@ class DocxDocument {
           .att(
             '@w',
             'val',
-            type === 'ol' ? this.ListStyleBuilder.getListPrefixSuffix(properties.style, level) : ''
+            type === 'ol'
+              ? this.ListStyleBuilder.getListPrefixSuffix(properties.style, level)
+              : this.ListStyleBuilder.getUnorderedListPrefixSuffix(properties.style)
           )
           .up()
           .ele('@w', 'lvlJc')
@@ -454,23 +510,82 @@ class DocxDocument {
     return fontTableObject.fontName;
   }
 
-  createMediaFile(base64String) {
-    // eslint-disable-next-line no-useless-escape
-    const matches = base64String.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
-    if (matches.length !== 3) {
+  async createMediaFile(base64String) {
+    const parsed = parseDataUrl(base64String);
+    if (!parsed) {
       throw new Error('Invalid base64 string');
     }
 
-    const base64FileContent = matches[2];
-    // matches array contains file type in base64 format - image/jpeg and base64 stringified data
-    const fileExtension =
-      matches[1].match(/\/(.*?)$/)[1] === 'octet-stream' ? 'png' : matches[1].match(/\/(.*?)$/)[1];
+    let base64FileContent = parsed.base64;
+    let mimeType = parsed.mimeType;
 
-    const fileNameWithExtension = `image-${nanoid()}.${fileExtension}`;
+    // Extract file extension from MIME type (e.g., image/jpeg -> jpeg)
+    const mimeTypePart = mimeType.match(/\/(.*?)$/);
+    let fileExtension =
+      !mimeTypePart || mimeTypePart[1] === 'octet-stream' ? 'png' : mimeTypePart[1];
+
+    // Handle SVG images based on svgHandling option
+    const svgHandling =
+      this.imageProcessing?.svgHandling ||
+      defaultDocumentOptions.imageProcessing.svgHandling;
+
+    if (isSVG(mimeType) && svgHandling === 'convert') {
+      try {
+        // Convert SVG to PNG for backward compatibility with older Word versions
+        // Decode base64 to get SVG string for dimension extraction
+        const svgString = Buffer.from(base64FileContent, 'base64').toString('utf-8');
+
+        // Extract dimensions from SVG using improved parser that handles:
+        // - Decimal values (100.5)
+        // - Units (100px, 10cm, 5in, etc.)
+        // - ViewBox as fallback
+        const { width, height } = parseSVGDimensions(svgString);
+
+        const pngBuffer = await convertSVGtoPNG(base64FileContent, { width, height });
+        base64FileContent = pngBuffer.toString('base64');
+        fileExtension = 'png';
+        mimeType = 'image/png';
+      } catch (error) {
+        // Sharp not available - fall back to native SVG mode
+        if (error.message.includes('Sharp is not installed')) {
+          // Only show the warning once per process to avoid spam (unless suppressed)
+          const suppressWarning =
+            this.imageProcessing?.suppressSharpWarning ||
+            defaultDocumentOptions.imageProcessing.suppressSharpWarning;
+
+          if (!sharpMissingWarningShown && !suppressWarning) {
+            // eslint-disable-next-line no-console
+            console.warn(
+              '\n[INFO] Sharp not installed - SVG images will be embedded natively (requires Office 2019+ or Microsoft 365).\n' +
+                'For maximum compatibility with all Word versions, install sharp: npm install sharp\n' +
+                'Learn more: https://github.com/TurboDocx/html-to-docx#svg-image-support\n'
+            );
+            sharpMissingWarningShown = true;
+          }
+        } else {
+          // eslint-disable-next-line no-console
+          console.error(`[ERROR] Failed to convert SVG to PNG: ${error.message}`);
+        }
+        // Fall back to using SVG directly if conversion fails
+        fileExtension = 'svg';
+      }
+    } else if (isSVG(mimeType)) {
+      // Use SVG natively (Office 2019+ support)
+      fileExtension = 'svg';
+    }
+
+    // Use deterministic IDs when deterministicIds option is enabled (for CI diff testing)
+    const imageId = this.deterministicIds ? this.lastMediaId.toString() : nanoid();
+    const fileNameWithExtension = `image-${imageId}.${fileExtension}`;
 
     this.lastMediaId += 1;
 
-    return { id: this.lastMediaId, fileContent: base64FileContent, fileNameWithExtension };
+    return {
+      id: this.lastMediaId,
+      fileContent: base64FileContent,
+      fileNameWithExtension,
+      isSVG: fileExtension === 'svg',
+    };
   }
 
   createDocumentRelationships(fileName = 'document', type, target, targetMode = 'External') {

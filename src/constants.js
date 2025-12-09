@@ -25,6 +25,87 @@ const portraitMargins = {
 const defaultFont = 'Times New Roman';
 const defaultFontSize = 22;
 const defaultLang = 'en-US';
+const defaultDirection = 'ltr';
+const defaultTableBorderOptions = {
+  size: 0,
+  stroke: 'nil',
+  color: '000000',
+};
+const defaultTableBorderAttributeOptions = {
+  size: 1,
+  stroke: 'single',
+};
+
+// SVG unit conversion factors to pixels (at 96 DPI standard)
+// Reference: https://www.w3.org/TR/SVG/coords.html#Units
+const SVG_UNIT_TO_PIXEL_CONVERSIONS = {
+  px: 1,
+  cm: 37.7952755906, // 96 DPI
+  mm: 3.77952755906,
+  in: 96,
+  pt: 1.33333333333, // 1/72 inch
+  pc: 16, // 1 pica = 12 points
+  em: 16, // Assume 16px default
+  rem: 16, // Assume 16px default
+  '%': 1, // Cannot convert without parent context, treat as pixels
+};
+const defaultHeadingOptions = {
+  heading1: {
+    font: defaultFont,
+    fontSize: 48,
+    bold: true,
+    spacing: { before: 480, after: 0 },
+    keepLines: true,
+    keepNext: true,
+    outlineLevel: 0,
+  },
+  heading2: {
+    font: defaultFont,
+    fontSize: 36,
+    bold: true,
+    spacing: { before: 360, after: 80 },
+    keepLines: true,
+    keepNext: true,
+    outlineLevel: 1,
+  },
+  heading3: {
+    font: defaultFont,
+    fontSize: 28,
+    bold: true,
+    spacing: { before: 280, after: 80 },
+    keepLines: true,
+    keepNext: true,
+    outlineLevel: 2,
+  },
+  heading4: {
+    font: defaultFont,
+    fontSize: 24,
+    bold: true,
+    spacing: { before: 240, after: 40 },
+    keepLines: true,
+    keepNext: true,
+    outlineLevel: 3,
+  },
+  heading5: {
+    font: defaultFont,
+    fontSize: defaultFontSize,
+    bold: true,
+    spacing: { before: 220, after: 40 },
+    keepLines: true,
+    keepNext: true,
+    outlineLevel: 4,
+  },
+  heading6: {
+    font: defaultFont,
+    fontSize: 20,
+    bold: true,
+    spacing: { before: 200, after: 40 },
+    keepLines: true,
+    keepNext: true,
+    outlineLevel: 5,
+  },
+};
+
 const defaultDocumentOptions = {
   orientation: defaultOrientation,
   margins: cloneDeep(portraitMargins),
@@ -48,6 +129,8 @@ const defaultDocumentOptions = {
     row: {
       cantSplit: false,
     },
+    borderOptions: defaultTableBorderOptions,
+    addSpacingAfter: true,
   },
   pageSize: {
     width: landscapeHeight,
@@ -64,8 +147,27 @@ const defaultDocumentOptions = {
   numbering: {
     defaultOrderedListStyleType: 'decimal',
   },
+  heading: defaultHeadingOptions,
   decodeUnicode: false,
   defaultLang,
+  direction: defaultDirection,
+  preprocessing: {
+    skipHTMLMinify: false,
+  },
+  imageProcessing: {
+    maxRetries: 2,
+    verboseLogging: false,
+    downloadTimeout: 5000, // 5 seconds per download attempt
+    maxImageSize: 10485760, // 10MB max per image
+    retryDelayBase: 500, // Base delay in ms for exponential backoff (500ms, 1000ms, 1500ms...)
+    minTimeout: 1000, // Minimum timeout in ms (1 second)
+    maxTimeout: 30000, // Maximum timeout in ms (30 seconds)
+    minImageSize: 1024, // Minimum image size in bytes (1KB)
+    maxCacheSize: 20 * 1024 * 1024, // 20MB max total cache size (prevents OOM)
+    maxCacheEntries: 100, // Max 100 unique images in cache (LRU eviction)
+    svgHandling: 'convert', // 'convert' (to PNG for compatibility), 'native' (Office 2019+ SVG support), or 'auto' (convert if sharp available, otherwise native)
+    suppressSharpWarning: false, // Set to true to suppress the warning when sharp is not installed
+  },
 };
 const defaultHTMLString = '<p></p>';
 const relsFolderName = '_rels';
@@ -105,9 +207,12 @@ const paragraphBordersObject = {
 };
 const colorlessColors = ['transparent', 'auto'];
 const verticalAlignValues = ['top', 'middle', 'bottom'];
+const defaultPercentageMarginValue = 0;
 
 export {
   defaultDocumentOptions,
+  defaultHeadingOptions,
+  defaultTableBorderOptions,
   defaultHTMLString,
   relsFolderName,
   headerFileName,
@@ -134,4 +239,8 @@ export {
   colorlessColors,
   verticalAlignValues,
   defaultLang,
+  defaultDirection,
+  defaultPercentageMarginValue,
+  defaultTableBorderAttributeOptions,
+  SVG_UNIT_TO_PIXEL_CONVERSIONS,
 };
