@@ -36,6 +36,30 @@ declare namespace HTMLtoDOCX {
         restart: "continuous" | "newPage" | "newSection";
     }
 
+    interface HeadingSpacing {
+        before?: number;
+        after?: number;
+    }
+
+    interface HeadingStyle {
+        font?: string;
+        fontSize?: number;
+        bold?: boolean;
+        spacing?: HeadingSpacing;
+        keepLines?: boolean;
+        keepNext?: boolean;
+        outlineLevel?: number;
+    }
+
+    interface HeadingConfig {
+        heading1?: HeadingStyle;
+        heading2?: HeadingStyle;
+        heading3?: HeadingStyle;
+        heading4?: HeadingStyle;
+        heading5?: HeadingStyle;
+        heading6?: HeadingStyle;
+    }
+
     interface DocumentOptions {
         orientation?: "portrait" | "landscape";
         pageSize?: PageSize;
@@ -64,10 +88,26 @@ declare namespace HTMLtoDOCX {
         numbering?: {
             defaultOrderedListStyleType?: string;
         };
+        heading?: HeadingConfig;
         decodeUnicode?: boolean;
         lang?: string;
+        direction?: "ltr" | "rtl";
         preprocessing?: {
             skipHTMLMinify?: boolean;
+        };
+        imageProcessing?: {
+            maxRetries?: number;
+            verboseLogging?: boolean;
+            downloadTimeout?: number;
+            maxImageSize?: number;
+            retryDelayBase?: number;
+            minTimeout?: number;
+            maxTimeout?: number;
+            minImageSize?: number;
+            maxCacheSize?: number;
+            maxCacheEntries?: number;
+            svgHandling?: "convert" | "native" | "auto";
+            suppressSharpWarning?: boolean;
         };
     }
 }
