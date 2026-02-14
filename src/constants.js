@@ -181,6 +181,8 @@ const footerType = 'footer';
 const themeType = 'theme';
 const hyperlinkType = 'hyperlink';
 const imageType = 'image';
+const commentType = 'comment';
+const commentsExtendedType = 'commentsExtended';
 const internalRelationship = 'Internal';
 const wordFolder = 'word';
 const themeFolder = 'theme';
@@ -236,6 +238,8 @@ export {
   defaultFontSize,
   hyperlinkType,
   imageType,
+  commentType,
+  commentsExtendedType,
   paragraphBordersObject,
   colorlessColors,
   verticalAlignValues,

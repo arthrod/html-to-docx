@@ -1658,6 +1658,43 @@ const buildParagraph = async (vNode, attributes, docxDocumentInstance) => {
     } else if (vNode.children) {
       for (let index = 0; index < vNode.children.length; index++) {
         const childVNode = vNode.children[index];
+        // Handle tracked changes (<ins>/<del> with data-author) inline within paragraph
+        // eslint-disable-next-line no-use-before-define, no-continue
+        if (
+          isVNode(childVNode) &&
+          (childVNode.tagName === 'ins' || childVNode.tagName === 'del') &&
+          childVNode.properties &&
+          childVNode.properties.attributes &&
+          childVNode.properties.attributes['data-author']
+        ) {
+          // eslint-disable-next-line no-use-before-define
+          const trackedFrag = await buildTrackedChange(
+            childVNode,
+            modifiedAttributes,
+            docxDocumentInstance
+          );
+          paragraphFragment.import(trackedFrag);
+          continue; // eslint-disable-line no-continue
+        }
+        // Handle comment markers inline within paragraph
+        if (
+          isVNode(childVNode) &&
+          childVNode.tagName === 'span' &&
+          childVNode.properties &&
+          childVNode.properties.attributes
+        ) {
+          const childClass = childVNode.properties.attributes.class;
+          if (childClass === 'comment-start') {
+            // eslint-disable-next-line no-use-before-define
+            paragraphFragment.import(buildCommentRangeStart(childVNode, docxDocumentInstance));
+            continue; // eslint-disable-line no-continue
+          }
+          if (childClass === 'comment-end') {
+            // eslint-disable-next-line no-use-before-define
+            paragraphFragment.import(buildCommentRangeEnd(childVNode));
+            continue; // eslint-disable-line no-continue
+          }
+        }
         if (childVNode.tagName === 'img') {
           const imageSource = childVNode.properties.src;
           const result = await processImageSource(
@@ -4021,6 +4058,159 @@ const buildDrawing = (inlineOrAnchored = false, graphicType, attributes) => {
   return drawingFragment;
 };
 
+// =============================================================================
+// TRACKED CHANGES & COMMENTS
+// =============================================================================
+
+function deriveInitials(authorName) {
+  return authorName
+    .split(/\s+/)
+    .filter((word) => word.length > 0)
+    .map((word) => word.charAt(0).toUpperCase())
+    .join('');
+}
+
+const buildTrackedChange = async (vNode, attributes, docxDocumentInstance) => {
+  const isInsertion = vNode.tagName === 'ins';
+  const attrs = (vNode.properties && vNode.properties.attributes) || {};
+  const author = attrs['data-author'] || 'Unknown Author';
+  const date = attrs.datetime || new Date().toISOString();
+  const id = attrs['data-id'] || docxDocumentInstance.createRevisionId();
+
+  docxDocumentInstance.hasTrackedChanges = true;
+
+  const wrapperTag = isInsertion ? 'ins' : 'del';
+
+  const changeFragment = fragment({ namespaceAlias: { w: namespaces.w } })
+    .ele('@w', wrapperTag)
+    .att('@w', 'id', String(id))
+    .att('@w', 'author', author)
+    .att('@w', 'date', date);
+
+  // Build child runs inside the tracked change wrapper
+  if (vNode.children && vNode.children.length) {
+    const modifiedAttributes = modifiedStyleAttributesBuilder(
+      docxDocumentInstance,
+      vNode,
+      attributes
+    );
+    for (let i = 0; i < vNode.children.length; i++) {
+      const child = vNode.children[i];
+      if (isVText(child)) {
+        const runFrag = fragment({ namespaceAlias: { w: namespaces.w } }).ele('@w', 'r');
+        const rPr = buildRunProperties(modifiedAttributes);
+        runFrag.import(rPr);
+        const textTag = isInsertion ? 't' : 'delText';
+        runFrag
+          .ele('@w', textTag)
+          .att('xml:space', 'preserve')
+          .txt(transformText(child.text, modifiedAttributes.textTransform))
+          .up();
+        runFrag.up();
+        changeFragment.import(runFrag);
+      } else if (isVNode(child)) {
+        // Handle nested inline elements (e.g., <strong> inside <ins>)
+        const nestedAttrs = modifiedStyleAttributesBuilder(
+          docxDocumentInstance,
+          child,
+          modifiedAttributes
+        );
+        const runFragments = await buildRunOrHyperLink(child, nestedAttrs, docxDocumentInstance);
+        if (Array.isArray(runFragments)) {
+          for (let j = 0; j < runFragments.length; j++) {
+            // For deletions, we need to replace w:t with w:delText in the fragments
+            if (!isInsertion) {
+              const fragStr = runFragments[j]
+                .toString()
+                .replace(/<w:t(\s)/g, '<w:delText$1')
+                .replace(/<w:t>/g, '<w:delText>')
+                .replace(/<\/w:t>/g, '</w:delText>');
+              const rebuiltFrag = fragment(fragStr);
+              changeFragment.import(rebuiltFrag);
+            } else {
+              changeFragment.import(runFragments[j]);
+            }
+          }
+        } else if (runFragments) {
+          if (!isInsertion) {
+            const fragStr = runFragments
+              .toString()
+              .replace(/<w:t(\s)/g, '<w:delText$1')
+              .replace(/<w:t>/g, '<w:delText>')
+              .replace(/<\/w:t>/g, '</w:delText>');
+            const rebuiltFrag = fragment(fragStr);
+            changeFragment.import(rebuiltFrag);
+          } else {
+            changeFragment.import(runFragments);
+          }
+        }
+      }
+    }
+  }
+
+  changeFragment.up();
+
+  return changeFragment;
+};
+
+const buildCommentRangeStart = (vNode, docxDocumentInstance) => {
+  const attrs = (vNode.properties && vNode.properties.attributes) || {};
+  // id is a top-level property in VDOM, not inside attributes
+  const commentId = (vNode.properties && vNode.properties.id) || attrs.id;
+  const author = attrs['data-author'] || 'Unknown Author';
+  const initials = attrs['data-initials'] || deriveInitials(author);
+  const date = attrs['data-date'] || new Date().toISOString();
+  const text = attrs['data-comment'] || '';
+  const parentId = attrs['data-parent-id'];
+  const done = attrs['data-done'] || '0';
+
+  docxDocumentInstance.addComment({
+    id: parseInt(commentId, 10),
+    author,
+    initials,
+    date,
+    text,
+    parentId,
+    done,
+  });
+
+  return fragment({ namespaceAlias: { w: namespaces.w } })
+    .ele('@w', 'commentRangeStart')
+    .att('@w', 'id', String(commentId))
+    .up();
+};
+
+const buildCommentRangeEnd = (vNode) => {
+  const attrs = (vNode.properties && vNode.properties.attributes) || {};
+  // id is a top-level property in VDOM, not inside attributes
+  const commentId = (vNode.properties && vNode.properties.id) || attrs.id;
+
+  const frag = fragment({ namespaceAlias: { w: namespaces.w } });
+
+  frag.import(
+    fragment({ namespaceAlias: { w: namespaces.w } })
+      .ele('@w', 'commentRangeEnd')
+      .att('@w', 'id', String(commentId))
+      .up()
+  );
+
+  frag.import(
+    fragment({ namespaceAlias: { w: namespaces.w } })
+      .ele('@w', 'r')
+      .ele('@w', 'rPr')
+      .ele('@w', 'rStyle')
+      .att('@w', 'val', 'CommentReference')
+      .up()
+      .up()
+      .ele('@w', 'commentReference')
+      .att('@w', 'id', String(commentId))
+      .up()
+      .up()
+  );
+
+  return frag;
+};
+
 export {
   buildParagraph,
   buildTable,
@@ -4034,4 +4224,7 @@ export {
   processImageSource,
   buildDrawing,
   fixupLineHeight,
+  buildTrackedChange,
+  buildCommentRangeStart,
+  buildCommentRangeEnd,
 };

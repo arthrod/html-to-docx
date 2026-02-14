@@ -18,6 +18,8 @@ import {
   wordFolder,
   themeFolder,
   themeType,
+  commentType,
+  commentsExtendedType,
 } from './constants';
 
 const convertHTML = createHTMLToVDOM();
@@ -125,6 +127,36 @@ async function addFilesToContainer(
     .file('numbering.xml', docxDocument.generateNumberingXML(), { createFolders: false })
     .file('settings.xml', docxDocument.generateSettingsXML(), { createFolders: false })
     .file('webSettings.xml', docxDocument.generateWebSettingsXML(), { createFolders: false });
+
+  // Add comments.xml if comments are present
+  if (docxDocument.hasComments) {
+    const commentsXMLContent = docxDocument.generateCommentsXML();
+    if (commentsXMLContent) {
+      zip.folder(wordFolder).file('comments.xml', commentsXMLContent, {
+        createFolders: false,
+      });
+      docxDocument.createDocumentRelationships(
+        docxDocument.relationshipFilename,
+        commentType,
+        'comments.xml',
+        internalRelationship
+      );
+    }
+
+    // Always add commentsExtended.xml when comments exist (for done tracking)
+    const commentsExtXMLContent = docxDocument.generateCommentsExtendedXML();
+    if (commentsExtXMLContent) {
+      zip.folder(wordFolder).file('commentsExtended.xml', commentsExtXMLContent, {
+        createFolders: false,
+      });
+      docxDocument.createDocumentRelationships(
+        docxDocument.relationshipFilename,
+        commentsExtendedType,
+        'commentsExtended.xml',
+        internalRelationship
+      );
+    }
+  }
 
   const relationshipXMLs = docxDocument.generateRelsXML();
   if (relationshipXMLs && Array.isArray(relationshipXMLs)) {

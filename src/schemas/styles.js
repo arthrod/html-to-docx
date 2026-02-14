@@ -69,7 +69,8 @@ const generateStylesXML = (
   fontSize = defaultFontSize,
   complexScriptFontSize = defaultFontSize,
   lang = defaultLang,
-  headingConfig = defaultHeadingOptions
+  headingConfig = defaultHeadingOptions,
+  hasComments = false
 ) => {
   const config = Object.fromEntries(
     Object.entries(defaultHeadingOptions).map(([key, defaultValue]) => [
@@ -114,6 +115,30 @@ const generateStylesXML = (
       generateHeadingStyleXML(key.charAt(0).toUpperCase() + key.slice(1), value)
     )
     .join('')}
+	${
+    hasComments
+      ? `<w:style w:type="character" w:styleId="CommentReference">
+	  <w:name w:val="annotation reference"/>
+	  <w:basedOn w:val="DefaultParagraphFont"/>
+	  <w:semiHidden/>
+	  <w:unhideWhenUsed/>
+	  <w:rPr>
+		<w:sz w:val="16"/>
+		<w:szCs w:val="16"/>
+	  </w:rPr>
+	</w:style>
+	<w:style w:type="paragraph" w:styleId="CommentText">
+	  <w:name w:val="annotation text"/>
+	  <w:basedOn w:val="Normal"/>
+	  <w:semiHidden/>
+	  <w:unhideWhenUsed/>
+	  <w:rPr>
+		<w:sz w:val="20"/>
+		<w:szCs w:val="20"/>
+	  </w:rPr>
+	</w:style>`
+      : ''
+  }
   </w:styles>
   `;
 };
