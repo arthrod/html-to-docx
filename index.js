@@ -4,6 +4,7 @@ import { minify } from 'html-minifier-terser';
 
 import createDocumentOptionsAndMergeWithDefaults from './src/utils/options-utils';
 import addFilesToContainer from './src/html-to-docx';
+import { preprocessResumeCSS } from './src/utils/css-preprocessor';
 
 const minifyHTMLString = async (htmlString) => {
   try {
@@ -34,13 +35,25 @@ async function generateContainer(
   let contentHTML = htmlString;
   let headerHTML = headerHTMLString;
   let footerHTML = footerHTMLString;
-  if (htmlString && !normalizedDocumentOptions['preprocessing']['skipHTMLMinify']) {
+  
+  // 新增: CSS预处理 - 将<style>标签中的CSS转换为内联样式
+  if (contentHTML && typeof contentHTML === 'string' && normalizedDocumentOptions['preprocessing'] && !normalizedDocumentOptions['preprocessing']['skipCSSPreprocessing']) {
+    contentHTML = preprocessResumeCSS(contentHTML);
+  }
+  if (headerHTML && typeof headerHTML === 'string' && normalizedDocumentOptions['preprocessing'] && !normalizedDocumentOptions['preprocessing']['skipCSSPreprocessing']) {
+    headerHTML = preprocessResumeCSS(headerHTML);
+  }
+  if (footerHTML && typeof footerHTML === 'string' && normalizedDocumentOptions['preprocessing'] && !normalizedDocumentOptions['preprocessing']['skipCSSPreprocessing']) {
+    footerHTML = preprocessResumeCSS(footerHTML);
+  }
+  
+  if (htmlString && normalizedDocumentOptions['preprocessing'] && !normalizedDocumentOptions['preprocessing']['skipHTMLMinify']) {
     contentHTML = await minifyHTMLString(contentHTML);
   }
-  if (headerHTMLString && !normalizedDocumentOptions['preprocessing']['skipHTMLMinify']) {
+  if (headerHTMLString && normalizedDocumentOptions['preprocessing'] && !normalizedDocumentOptions['preprocessing']['skipHTMLMinify']) {
     headerHTML = await minifyHTMLString(headerHTML);
   }
-  if (footerHTMLString && !normalizedDocumentOptions['preprocessing']['skipHTMLMinify']) {
+  if (footerHTMLString && normalizedDocumentOptions['preprocessing'] && !normalizedDocumentOptions['preprocessing']['skipHTMLMinify']) {
     footerHTML = await minifyHTMLString(footerHTML);
   }
 

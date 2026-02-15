@@ -7,6 +7,7 @@ import { cloneDeep } from 'lodash';
 import createHTMLToVDOM from './html-parser';
 import { VNode, isVNode, isVText } from '../vdom/index';
 import * as xmlBuilder from './xml-builder';
+import { fixupColorCode, buildHorizontalRule } from './xml-builder';
 import namespaces from '../namespaces';
 import { defaultDocumentOptions } from '../constants';
 import { buildImage } from '../utils/image';
@@ -193,6 +194,15 @@ async function findXMLEquivalent(docxDocumentInstance, vNode, xmlFragment, image
   if (!imageOptions) {
     imageOptions = docxDocumentInstance.imageProcessing || defaultDocumentOptions.imageProcessing;
   }
+
+  // Suppress elements with display:none, visibility:hidden, or opacity:0
+  if (vNode.properties && vNode.properties.style) {
+    const { style } = vNode.properties;
+    if (style.display === 'none' || style.visibility === 'hidden' || style.opacity === '0') {
+      return;
+    }
+  }
+
   if (
     vNode.tagName === 'div' &&
     (vNode.properties.attributes.class === 'page-break' ||
@@ -226,6 +236,137 @@ async function findXMLEquivalent(docxDocumentInstance, vNode, xmlFragment, image
         docxDocumentInstance
       );
       xmlFragment.import(headingFragment);
+      return;
+    case 'section':
+    case 'div':
+    case 'article':
+    case 'aside':
+    case 'main':
+    case 'header':
+    case 'footer':
+    case 'nav':
+      // 处理块级容器元素 - 递归处理子元素并传递父元素的样式
+      if (vNodeHasChildren(vNode)) {
+        // 从父元素提取可继承的样式
+        const parentStyles =
+          vNode.properties && vNode.properties.style ? vNode.properties.style : {};
+
+        // 检查是否是section标签（需要特殊处理以增强视觉区分）
+        const isSection = vNode.tagName === 'section';
+        const hasPadding = parentStyles.padding || parentStyles['padding-top'];
+        const hasMarginBottom = parentStyles['margin-bottom'];
+        const hasBackground = parentStyles['background-color'];
+        // Inheritable CSS properties from parent container
+        const inheritableTextAlign = parentStyles['text-align'];
+        const inheritableColor = parentStyles.color;
+        const inheritableFontFamily = parentStyles['font-family'];
+        const inheritableFontSize = parentStyles['font-size'];
+
+        // 为section添加顶部分隔（增强视觉效果）
+        if (isSection && (hasPadding || hasBackground)) {
+          // 添加空段落作为顶部间距，带背景色
+          const spacerFragment = fragment({ namespaceAlias: { w: namespaces.w } })
+            .ele('@w', 'p')
+            .ele('@w', 'pPr');
+
+          if (hasBackground) {
+            spacerFragment
+              .ele('@w', 'shd')
+              .att('@w', 'val', 'clear')
+              .att('@w', 'fill', fixupColorCode(parentStyles['background-color']))
+              .up();
+          }
+
+          spacerFragment
+            .ele('@w', 'spacing')
+            .att('@w', 'lineRule', 'auto')
+            .att('@w', 'before', '120') // 增加段前间距
+            .up()
+            .up()
+            .up();
+
+          xmlFragment.import(spacerFragment);
+        }
+
+        for (let index = 0; index < vNode.children.length; index += 1) {
+          const childVNode = vNode.children[index];
+
+          // Propagate inheritable CSS properties to child elements
+          if (childVNode.properties) {
+            if (!childVNode.properties.style) {
+              childVNode.properties.style = {};
+            }
+            // Propagate background-color
+            if (hasBackground && !childVNode.properties.style['background-color']) {
+              childVNode.properties.style['background-color'] = parentStyles['background-color'];
+            }
+            // Propagate text-align (CSS inherited property)
+            if (inheritableTextAlign && !childVNode.properties.style['text-align']) {
+              childVNode.properties.style['text-align'] = inheritableTextAlign;
+            }
+            // Propagate color (CSS inherited property)
+            if (inheritableColor && !childVNode.properties.style.color) {
+              childVNode.properties.style.color = inheritableColor;
+            }
+            // Propagate font-family (CSS inherited property)
+            if (inheritableFontFamily && !childVNode.properties.style['font-family']) {
+              childVNode.properties.style['font-family'] = inheritableFontFamily;
+            }
+            // Propagate font-size (CSS inherited property)
+            if (inheritableFontSize && !childVNode.properties.style['font-size']) {
+              childVNode.properties.style['font-size'] = inheritableFontSize;
+            }
+          }
+
+          // 为section的第一个子元素添加额外的顶部间距
+          if (isSection && index === 0 && childVNode.properties) {
+            if (!childVNode.properties.style) {
+              childVNode.properties.style = {};
+            }
+            if (!childVNode.properties.style['margin-top']) {
+              childVNode.properties.style['margin-top'] = '8pt';
+            }
+          }
+
+          // 为section的最后一个子元素添加额外的底部间距
+          if (isSection && index === vNode.children.length - 1 && childVNode.properties) {
+            if (!childVNode.properties.style) {
+              childVNode.properties.style = {};
+            }
+            if (!childVNode.properties.style['margin-bottom']) {
+              childVNode.properties.style['margin-bottom'] = '8pt';
+            }
+          }
+
+          // eslint-disable-next-line no-use-before-define
+          await convertVTreeToXML(docxDocumentInstance, childVNode, xmlFragment, imageOptions);
+        }
+
+        // 为section添加底部分隔（增强视觉效果）
+        if (isSection && (hasPadding || hasMarginBottom || hasBackground)) {
+          const spacerFragment = fragment({ namespaceAlias: { w: namespaces.w } })
+            .ele('@w', 'p')
+            .ele('@w', 'pPr');
+
+          if (hasBackground) {
+            spacerFragment
+              .ele('@w', 'shd')
+              .att('@w', 'val', 'clear')
+              .att('@w', 'fill', fixupColorCode(parentStyles['background-color']))
+              .up();
+          }
+
+          spacerFragment
+            .ele('@w', 'spacing')
+            .att('@w', 'lineRule', 'auto')
+            .att('@w', 'after', hasMarginBottom ? '240' : '160') // 较大的段后间距
+            .up()
+            .up()
+            .up();
+
+          xmlFragment.import(spacerFragment);
+        }
+      }
       return;
     case 'span':
     case 'strong':
@@ -287,6 +428,10 @@ async function findXMLEquivalent(docxDocumentInstance, vNode, xmlFragment, image
                 `[DEBUG] findXMLEquivalent: buildImage returned null/undefined in figure`
               );
             }
+          } else {
+            // Handle figcaption and any other children inside figure
+            // eslint-disable-next-line no-use-before-define
+            await convertVTreeToXML(docxDocumentInstance, childVNode, xmlFragment, imageOptions);
           }
         }
       }
@@ -338,6 +483,87 @@ async function findXMLEquivalent(docxDocumentInstance, vNode, xmlFragment, image
     case 'br':
       const linebreakFragment = await xmlBuilder.buildParagraph(null, {});
       xmlFragment.import(linebreakFragment);
+      return;
+    case 'hr':
+      // Horizontal rule - rendered as a paragraph with a bottom border
+      const hrFragment = buildHorizontalRule();
+      xmlFragment.import(hrFragment);
+      return;
+    case 'dl':
+      // Definition list - process children (dt/dd) recursively
+      if (vNodeHasChildren(vNode)) {
+        for (let index = 0; index < vNode.children.length; index += 1) {
+          const childVNode = vNode.children[index];
+          // eslint-disable-next-line no-use-before-define
+          await convertVTreeToXML(docxDocumentInstance, childVNode, xmlFragment, imageOptions);
+        }
+      }
+      return;
+    case 'dt':
+      // Definition term - render as bold paragraph
+      if (!vNode.properties) vNode.properties = {};
+      if (!vNode.properties.style) vNode.properties.style = {};
+      if (!vNode.properties.style['font-weight']) {
+        vNode.properties.style['font-weight'] = 'bold';
+      }
+      const dtFragment = await xmlBuilder.buildParagraph(vNode, {}, docxDocumentInstance);
+      xmlFragment.import(dtFragment);
+      return;
+    case 'dd':
+      // Definition description - render as indented paragraph
+      if (!vNode.properties) vNode.properties = {};
+      if (!vNode.properties.style) vNode.properties.style = {};
+      const ddFragment = await xmlBuilder.buildParagraph(
+        vNode,
+        { indentation: { left: 720 } },
+        docxDocumentInstance
+      );
+      xmlFragment.import(ddFragment);
+      return;
+    case 'figcaption':
+    case 'caption':
+      // Figure caption / table caption - render as italic centered paragraph
+      if (!vNode.properties) vNode.properties = {};
+      if (!vNode.properties.style) vNode.properties.style = {};
+      if (!vNode.properties.style['font-style']) {
+        vNode.properties.style['font-style'] = 'italic';
+      }
+      if (!vNode.properties.style['text-align']) {
+        vNode.properties.style['text-align'] = 'center';
+      }
+      const captionFragment = await xmlBuilder.buildParagraph(vNode, {}, docxDocumentInstance);
+      xmlFragment.import(captionFragment);
+      return;
+    case 'address':
+      // Address element - render as italic paragraph (per HTML spec, address is italic by default)
+      if (!vNode.properties) vNode.properties = {};
+      if (!vNode.properties.style) vNode.properties.style = {};
+      if (!vNode.properties.style['font-style']) {
+        vNode.properties.style['font-style'] = 'italic';
+      }
+      const addressFragment = await xmlBuilder.buildParagraph(vNode, {}, docxDocumentInstance);
+      xmlFragment.import(addressFragment);
+      return;
+    case 'cite':
+    case 'dfn':
+    case 'var':
+      // cite, dfn, var - render as italic inline (per HTML spec defaults)
+      if (!vNode.properties) vNode.properties = {};
+      if (!vNode.properties.style) vNode.properties.style = {};
+      if (!vNode.properties.style['font-style']) {
+        vNode.properties.style['font-style'] = 'italic';
+      }
+      const italicInlineFragment = await xmlBuilder.buildParagraph(vNode, {}, docxDocumentInstance);
+      xmlFragment.import(italicInlineFragment);
+      return;
+    case 'abbr':
+    case 'small':
+    case 'time':
+    case 'samp':
+    case 'kbd':
+      // Other semantic inline elements - render as normal paragraphs
+      const semanticFragment = await xmlBuilder.buildParagraph(vNode, {}, docxDocumentInstance);
+      xmlFragment.import(semanticFragment);
       return;
     case 'head':
       return;
@@ -439,6 +665,7 @@ async function renderDocumentFile(docxDocumentInstance, properties = {}) {
     // Apply inherited properties from parent elements to child elements
     // Properties object contains CSS-style properties that should be inherited (e.g., alignment, fonts)
     // This enables proper formatting when content is injected into existing document structure
+    // eslint-disable-next-line no-restricted-syntax
     for (const child of vTree) {
       // Validate properties object and ensure child.properties.style exists
       if (properties && typeof properties === 'object' && child.properties) {
@@ -450,14 +677,11 @@ async function renderDocumentFile(docxDocumentInstance, properties = {}) {
         child.properties.style = { ...properties, ...child.properties.style };
       }
     }
-  } else {
-    // Handle single VTree node (not an array)
-    if (properties && typeof properties === 'object' && vTree.properties) {
-      if (!vTree.properties.style) {
-        vTree.properties.style = {};
-      }
-      vTree.properties.style = { ...properties, ...vTree.properties.style };
+  } else if (properties && typeof properties === 'object' && vTree.properties) {
+    if (!vTree.properties.style) {
+      vTree.properties.style = {};
     }
+    vTree.properties.style = { ...properties, ...vTree.properties.style };
   }
 
   const xmlFragment = fragment({ namespaceAlias: { w: namespaces.w } });

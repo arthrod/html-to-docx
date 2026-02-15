@@ -326,6 +326,61 @@ const buildTextShadow = () =>
     .att('@w', 'val', true)
     .up();
 
+// Build letter spacing (w:spacing) run property.
+// Value is in half-points (1/20th of a point expressed as twips for spacing element)
+const buildLetterSpacing = (spacingValue) =>
+  fragment({ namespaceAlias: { w: namespaces.w } })
+    .ele('@w', 'spacing')
+    .att('@w', 'val', spacingValue)
+    .up();
+
+// Build small caps (w:smallCaps) run property
+const buildSmallCaps = () =>
+  fragment({ namespaceAlias: { w: namespaces.w } })
+    .ele('@w', 'smallCaps')
+    .att('@w', 'val', true)
+    .up();
+
+// Build all-caps (w:caps) run property - for text-transform: uppercase
+const buildCaps = () =>
+  fragment({ namespaceAlias: { w: namespaces.w } })
+    .ele('@w', 'caps')
+    .att('@w', 'val', true)
+    .up();
+
+// Build word spacing (w:spacing w:val) - adjusts spacing between words
+// In OOXML, w:spacing/@w:val sets character spacing which affects inter-word spacing
+const buildWordSpacing = (spacingValue) =>
+  fragment({ namespaceAlias: { w: namespaces.w } })
+    .ele('@w', 'spacing')
+    .att('@w', 'val', spacingValue)
+    .up();
+
+// Build page break before paragraph property
+const buildPageBreakBefore = () =>
+  fragment({ namespaceAlias: { w: namespaces.w } })
+    .ele('@w', 'pageBreakBefore')
+    .up();
+
+// Build horizontal rule - a paragraph with a bottom border
+const buildHorizontalRule = () => {
+  const hrFragment = fragment({ namespaceAlias: { w: namespaces.w } }).ele('@w', 'p');
+  const pPr = fragment({ namespaceAlias: { w: namespaces.w } }).ele('@w', 'pPr');
+  const pBdr = fragment({ namespaceAlias: { w: namespaces.w } }).ele('@w', 'pBdr');
+  const bottomBorder = buildBorder('bottom', 6, 1, 'auto', 'single');
+  pBdr.import(bottomBorder);
+  pBdr.up();
+  pPr.import(pBdr);
+  // Add some spacing around the hr
+  // eslint-disable-next-line no-use-before-define
+  const spacingFrag = buildSpacing(undefined, 120, 120);
+  pPr.import(spacingFrag);
+  pPr.up();
+  hrFragment.import(pPr);
+  hrFragment.up();
+  return hrFragment;
+};
+
 // eslint-disable-next-line consistent-return
 const fixupLineHeight = (lineHeight, fontSize) => {
   // FIXME: If line height is anything other than a number
@@ -530,6 +585,7 @@ const modifiedStyleAttributesBuilder = (docxDocumentInstance, vNode, attributes,
     const vNodeStyle = vNode.properties.style;
     const vNodeStyleKeys = Object.keys(vNodeStyle);
 
+    // eslint-disable-next-line no-restricted-syntax
     for (const vNodeStyleKey of vNodeStyleKeys) {
       const vNodeStyleValue = vNodeStyle[vNodeStyleKey];
       if (vNodeStyleKey === 'color') {
@@ -553,14 +609,27 @@ const modifiedStyleAttributesBuilder = (docxDocumentInstance, vNode, attributes,
           modifiedAttributes.textAlign = vNodeStyleValue;
         }
       } else if (vNodeStyleKey === 'font-weight') {
-        // FIXME: remove bold check when other font weights are handled.
-        if (vNodeStyleValue === 'bold') {
+        // Handle both keyword 'bold' and numeric values (100-900)
+        // Per CSS spec, values >= 700 are considered bold
+        if (vNodeStyleValue === 'bold' || vNodeStyleValue === 'bolder') {
           modifiedAttributes.strong = vNodeStyleValue;
+        } else if (!Number.isNaN(Number(vNodeStyleValue)) && Number(vNodeStyleValue) >= 700) {
+          modifiedAttributes.strong = 'bold';
+        }
+      } else if (vNodeStyleKey === 'font-style') {
+        // Handle font-style: italic | oblique
+        if (vNodeStyleValue === 'italic' || vNodeStyleValue.startsWith('oblique')) {
+          modifiedAttributes.italic = true;
         }
       } else if (vNodeStyleKey === 'font-family') {
-        modifiedAttributes.font = docxDocumentInstance.createFont(vNodeStyleValue);
+        if (docxDocumentInstance && docxDocumentInstance.createFont) {
+          modifiedAttributes.font = docxDocumentInstance.createFont(vNodeStyleValue);
+        } else {
+          // Fallback: use the first font in the comma-separated list
+          modifiedAttributes.font = vNodeStyleValue.split(',')[0].trim().replace(/['"]/g, '');
+        }
       } else if (vNodeStyleKey === 'font-size') {
-        modifiedAttributes.fontSize = fixupFontSize(vNodeStyleValue, docxDocumentInstance);
+        modifiedAttributes.fontSize = fixupFontSize(vNodeStyleValue, docxDocumentInstance || {});
       } else if (vNodeStyleKey === 'line-height') {
         modifiedAttributes.lineHeight = fixupLineHeight(
           vNodeStyleValue,
@@ -576,29 +645,56 @@ const modifiedStyleAttributesBuilder = (docxDocumentInstance, vNode, attributes,
           left: 0,
           right: 0,
         };
+
+        // Detect margin: X auto (horizontal centering)
+        let leftIsAuto = false;
+        let rightIsAuto = false;
+
         if (marginParts.length === 1) {
-          const fixedUpMargin = fixupMargin(marginParts[0]);
-          margins.top = fixedUpMargin;
-          margins.bottom = fixedUpMargin;
-          margins.left = fixedUpMargin;
-          margins.right = fixedUpMargin;
+          if (marginParts[0] === 'auto') {
+            leftIsAuto = true;
+            rightIsAuto = true;
+          } else {
+            const fixedUpMargin = fixupMargin(marginParts[0]);
+            margins.top = fixedUpMargin;
+            margins.bottom = fixedUpMargin;
+            margins.left = fixedUpMargin;
+            margins.right = fixedUpMargin;
+          }
         } else if (marginParts.length === 2) {
           const fixedUpMarginVertical = fixupMargin(marginParts[0]);
-          const fixedUpMarginHorizontal = fixupMargin(marginParts[1]);
           margins.top = fixedUpMarginVertical;
           margins.bottom = fixedUpMarginVertical;
-          margins.left = fixedUpMarginHorizontal;
-          margins.right = fixedUpMarginHorizontal;
+          if (marginParts[1] === 'auto') {
+            leftIsAuto = true;
+            rightIsAuto = true;
+          } else {
+            const fixedUpMarginHorizontal = fixupMargin(marginParts[1]);
+            margins.left = fixedUpMarginHorizontal;
+            margins.right = fixedUpMarginHorizontal;
+          }
         } else if (marginParts.length === 3) {
           margins.top = fixupMargin(marginParts[0]);
           margins.bottom = fixupMargin(marginParts[2]);
-          margins.right = fixupMargin(marginParts[1]);
-          margins.left = fixupMargin(marginParts[1]);
+          if (marginParts[1] === 'auto') {
+            leftIsAuto = true;
+            rightIsAuto = true;
+          } else {
+            margins.right = fixupMargin(marginParts[1]);
+            margins.left = fixupMargin(marginParts[1]);
+          }
         } else if (marginParts.length === 4) {
           margins.top = fixupMargin(marginParts[0]);
-          margins.right = fixupMargin(marginParts[1]);
           margins.bottom = fixupMargin(marginParts[2]);
-          margins.left = fixupMargin(marginParts[3]);
+          rightIsAuto = marginParts[1] === 'auto';
+          leftIsAuto = marginParts[3] === 'auto';
+          if (!rightIsAuto) margins.right = fixupMargin(marginParts[1]);
+          if (!leftIsAuto) margins.left = fixupMargin(marginParts[3]);
+        }
+
+        // CSS margin: X auto → center alignment in DOCX
+        if (leftIsAuto && rightIsAuto) {
+          modifiedAttributes.textAlign = 'center';
         }
 
         const { left, right, bottom } = margins;
@@ -632,6 +728,10 @@ const modifiedStyleAttributesBuilder = (docxDocumentInstance, vNode, attributes,
         modifiedAttributes.width = vNodeStyle.width;
       } else if (vNodeStyleKey === 'text-transform') {
         modifiedAttributes.textTransform = vNodeStyleValue;
+        // Also set OOXML caps/smallCaps for uppercase/capitalize
+        if (vNodeStyleValue === 'uppercase') {
+          modifiedAttributes.caps = true;
+        }
       } else if (vNodeStyleKey === 'text-decoration') {
         const valueParts = vNodeStyleValue.split(' ').map((part) => part.toLowerCase());
         let value = {};
@@ -675,6 +775,153 @@ const modifiedStyleAttributesBuilder = (docxDocumentInstance, vNode, attributes,
       } else if (vNodeStyleKey === 'text-shadow') {
         if (vNodeStyleValue.trim() !== '' && vNodeStyleValue !== 'none') {
           modifiedAttributes.textShadow = vNodeStyleValue;
+        }
+      } else if (vNodeStyleKey === 'letter-spacing') {
+        // letter-spacing maps to w:spacing run property
+        // Value needs to be in twips (twentieth of a point)
+        if (vNodeStyleValue !== 'normal') {
+          let spacingTwips = 0;
+          if (pixelRegex.test(vNodeStyleValue)) {
+            const px = vNodeStyleValue.match(pixelRegex)[1];
+            spacingTwips = pixelToTWIP(px);
+          } else if (pointRegex.test(vNodeStyleValue)) {
+            const pt = vNodeStyleValue.match(pointRegex)[1];
+            spacingTwips = pointToTWIP(pt);
+          } else if (cmRegex.test(vNodeStyleValue)) {
+            const cm = vNodeStyleValue.match(cmRegex)[1];
+            spacingTwips = cmToTWIP(cm);
+          } else if (inchRegex.test(vNodeStyleValue)) {
+            const inch = vNodeStyleValue.match(inchRegex)[1];
+            spacingTwips = inchToTWIP(inch);
+          }
+          if (spacingTwips !== 0) {
+            modifiedAttributes.letterSpacing = spacingTwips;
+          }
+        }
+      } else if (vNodeStyleKey === 'text-indent') {
+        // text-indent maps to w:ind firstLine attribute
+        let indentTwips = 0;
+        if (pixelRegex.test(vNodeStyleValue)) {
+          const px = vNodeStyleValue.match(pixelRegex)[1];
+          indentTwips = pixelToTWIP(px);
+        } else if (pointRegex.test(vNodeStyleValue)) {
+          const pt = vNodeStyleValue.match(pointRegex)[1];
+          indentTwips = pointToTWIP(pt);
+        } else if (cmRegex.test(vNodeStyleValue)) {
+          const cm = vNodeStyleValue.match(cmRegex)[1];
+          indentTwips = cmToTWIP(cm);
+        } else if (inchRegex.test(vNodeStyleValue)) {
+          const inch = vNodeStyleValue.match(inchRegex)[1];
+          indentTwips = inchToTWIP(inch);
+        }
+        if (indentTwips !== 0) {
+          modifiedAttributes.textIndent = indentTwips;
+        }
+      } else if (vNodeStyleKey === 'margin-top') {
+        // margin-top maps to beforeSpacing in paragraph properties
+        modifiedAttributes.beforeSpacing = fixupMargin(vNodeStyle['margin-top']);
+      } else if (vNodeStyleKey === 'padding') {
+        // padding shorthand - map to indentation (left/right) and spacing (top/bottom)
+        const paddingParts = vNodeStyleValue.split(' ');
+        const paddings = { top: 0, right: 0, bottom: 0, left: 0 };
+        if (paddingParts.length === 1) {
+          const v = fixupMargin(paddingParts[0]);
+          paddings.top = v;
+          paddings.right = v;
+          paddings.bottom = v;
+          paddings.left = v;
+        } else if (paddingParts.length === 2) {
+          paddings.top = fixupMargin(paddingParts[0]);
+          paddings.bottom = fixupMargin(paddingParts[0]);
+          paddings.right = fixupMargin(paddingParts[1]);
+          paddings.left = fixupMargin(paddingParts[1]);
+        } else if (paddingParts.length === 3) {
+          paddings.top = fixupMargin(paddingParts[0]);
+          paddings.right = fixupMargin(paddingParts[1]);
+          paddings.left = fixupMargin(paddingParts[1]);
+          paddings.bottom = fixupMargin(paddingParts[2]);
+        } else if (paddingParts.length === 4) {
+          paddings.top = fixupMargin(paddingParts[0]);
+          paddings.right = fixupMargin(paddingParts[1]);
+          paddings.bottom = fixupMargin(paddingParts[2]);
+          paddings.left = fixupMargin(paddingParts[3]);
+        }
+        if (isZeroOrTruthy(paddings.left) || isZeroOrTruthy(paddings.right)) {
+          modifiedAttributes.indentation = {
+            ...(modifiedAttributes.indentation || {}),
+            left: paddings.left,
+            right: paddings.right,
+          };
+        }
+        if (isZeroOrTruthy(paddings.top)) {
+          modifiedAttributes.beforeSpacing = paddings.top;
+        }
+        if (isZeroOrTruthy(paddings.bottom)) {
+          modifiedAttributes.afterSpacing = paddings.bottom;
+        }
+      } else if (vNodeStyleKey === 'padding-left' || vNodeStyleKey === 'padding-right') {
+        const leftPad = vNodeStyle['padding-left']
+          ? fixupMargin(vNodeStyle['padding-left'])
+          : undefined;
+        const rightPad = vNodeStyle['padding-right']
+          ? fixupMargin(vNodeStyle['padding-right'])
+          : undefined;
+        if (isZeroOrTruthy(leftPad) || isZeroOrTruthy(rightPad)) {
+          modifiedAttributes.indentation = {
+            ...(modifiedAttributes.indentation || {}),
+            ...(isZeroOrTruthy(leftPad) ? { left: leftPad } : {}),
+            ...(isZeroOrTruthy(rightPad) ? { right: rightPad } : {}),
+          };
+        }
+      } else if (vNodeStyleKey === 'padding-top') {
+        modifiedAttributes.beforeSpacing = fixupMargin(vNodeStyleValue);
+      } else if (vNodeStyleKey === 'padding-bottom') {
+        modifiedAttributes.afterSpacing = fixupMargin(vNodeStyleValue);
+      } else if (vNodeStyleKey === 'page-break-before') {
+        if (vNodeStyleValue === 'always') {
+          modifiedAttributes.pageBreakBefore = true;
+        }
+      } else if (vNodeStyleKey === 'page-break-after') {
+        if (vNodeStyleValue === 'always') {
+          modifiedAttributes.pageBreakAfter = true;
+        }
+      } else if (vNodeStyleKey === 'white-space') {
+        // Track white-space for preserving whitespace in pre/pre-wrap
+        modifiedAttributes.whiteSpace = vNodeStyleValue;
+      } else if (
+        vNodeStyleKey === 'border-bottom' ||
+        vNodeStyleKey === 'border-top' ||
+        vNodeStyleKey === 'border-left' ||
+        vNodeStyleKey === 'border-right' ||
+        vNodeStyleKey === 'border'
+      ) {
+        // Pass through border info for paragraphs (used for hr-like styling)
+        modifiedAttributes[vNodeStyleKey] = vNodeStyleValue;
+      } else if (vNodeStyleKey === 'font-variant') {
+        // font-variant: small-caps → w:smallCaps
+        if (vNodeStyleValue === 'small-caps') {
+          modifiedAttributes.smallCaps = true;
+        }
+      } else if (vNodeStyleKey === 'word-spacing') {
+        // word-spacing maps to w:spacing run property (additional character spacing)
+        if (vNodeStyleValue !== 'normal') {
+          let spacingTwips = 0;
+          if (pixelRegex.test(vNodeStyleValue)) {
+            const px = vNodeStyleValue.match(pixelRegex)[1];
+            spacingTwips = pixelToTWIP(px);
+          } else if (pointRegex.test(vNodeStyleValue)) {
+            const pt = vNodeStyleValue.match(pointRegex)[1];
+            spacingTwips = pointToTWIP(pt);
+          } else if (cmRegex.test(vNodeStyleValue)) {
+            const cm = vNodeStyleValue.match(cmRegex)[1];
+            spacingTwips = cmToTWIP(cm);
+          } else if (inchRegex.test(vNodeStyleValue)) {
+            const inch = vNodeStyleValue.match(inchRegex)[1];
+            spacingTwips = inchToTWIP(inch);
+          }
+          if (spacingTwips !== 0) {
+            modifiedAttributes.wordSpacing = spacingTwips;
+          }
         }
       }
     }
@@ -739,6 +986,27 @@ const buildFormatting = (htmlTag, options) => {
       return buildTextDecoration(options && options.textDecoration ? options.textDecoration : {});
     case 'textShadow':
       return buildTextShadow();
+    case 'italic':
+      return buildItalics();
+    case 'letterSpacing':
+      return buildLetterSpacing(options && options.letterSpacing ? options.letterSpacing : 0);
+    case 'smallCaps':
+      return buildSmallCaps();
+    case 'caps':
+      return buildCaps();
+    case 'wordSpacing':
+      return buildWordSpacing(options && options.wordSpacing ? options.wordSpacing : 0);
+    case 'cite':
+    case 'dfn':
+    case 'var':
+    case 'address':
+      return buildItalics();
+    case 'samp':
+    case 'kbd':
+      return buildHighlight('lightGray');
+    case 'small':
+      // small text - reduce font size (not a perfect mapping, but close)
+      return buildFontSize(options && options.fontSize ? options.fontSize * 0.8 : 8);
   }
 
   return null;
@@ -763,6 +1031,14 @@ const buildRunProperties = (attributes) => {
 
       if (key === 'textShadow') {
         options.textShadow = attributes[key];
+      }
+
+      if (key === 'letterSpacing') {
+        options.letterSpacing = attributes[key];
+      }
+
+      if (key === 'wordSpacing') {
+        options.wordSpacing = attributes[key];
       }
 
       const formattingFragment = buildFormatting(key, options);
@@ -804,6 +1080,15 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
       'blockquote',
       'code',
       'pre',
+      'cite',
+      'dfn',
+      'var',
+      'small',
+      'samp',
+      'kbd',
+      'abbr',
+      'time',
+      'address',
     ].includes(vNode.tagName)
   ) {
     const runFragmentsArray = [];
@@ -854,6 +1139,15 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
             'mark',
             'code',
             'pre',
+            'cite',
+            'dfn',
+            'var',
+            'small',
+            'samp',
+            'kbd',
+            'abbr',
+            'time',
+            'address',
           ].includes(tempVNode.tagName)
         ) {
           switch (tempVNode.tagName) {
@@ -863,10 +1157,20 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
               break;
             case 'em':
             case 'i':
+            case 'cite':
+            case 'dfn':
+            case 'var':
+            case 'address':
               tempAttributes.i = true;
               break;
+            case 'ins':
             case 'u':
               tempAttributes.u = true;
+              break;
+            case 'strike':
+            case 'del':
+            case 's':
+              tempAttributes.strike = true;
               break;
             case 'sub':
               tempAttributes.sub = true;
@@ -874,8 +1178,27 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
             case 'sup':
               tempAttributes.sup = true;
               break;
+            case 'mark':
+              tempAttributes.mark = true;
+              break;
+            case 'code':
+            case 'samp':
+            case 'kbd':
+              tempAttributes.code = true;
+              break;
+            case 'pre':
+              tempAttributes.pre = true;
+              break;
+            case 'small':
+              tempAttributes.small = true;
+              break;
+            case 'abbr':
+            case 'time':
+              // These semantic elements don't have a default visual style
+              // but they're recognized so their text content is preserved
+              break;
           }
-          const formattingFragment = buildFormatting(tempVNode);
+          const formattingFragment = buildFormatting(tempVNode.tagName);
           formattingFragmentAttributes = modifiedStyleAttributesBuilder(
             docxDocumentInstance,
             tempVNode,
@@ -931,6 +1254,7 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
           };
 
           // Now we follow the same logic as the span node conversion
+          // eslint-disable-next-line no-use-before-define
           const spanFragment = await buildRunOrRuns(
             coveringNode,
             { ...attributes, ...tempAttributes },
@@ -1021,6 +1345,7 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
 
         // Validate buffer before calling sizeOf
         if (!imageBuffer || imageBuffer.length === 0) {
+          // eslint-disable-next-line no-console
           console.warn(`[BUILDRUN] Empty image buffer for: ${imageSource}`);
           return runFragment;
         }
@@ -1028,6 +1353,7 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
         // Check if we got HTML instead of image data (common with Wikimedia errors)
         const firstBytes = imageBuffer.slice(0, 20).toString('utf8');
         if (firstBytes.startsWith('<!DOCTYPE') || firstBytes.startsWith('<html')) {
+          // eslint-disable-next-line no-console
           console.warn(`[BUILDRUN] Received HTML instead of image data for: ${imageSource}`);
           return runFragment;
         }
@@ -1036,10 +1362,12 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
         try {
           imageProperties = sizeOf(imageBuffer);
           if (!imageProperties || !imageProperties.width || !imageProperties.height) {
+            // eslint-disable-next-line no-console
             console.warn(`[BUILDRUN] Invalid image properties for: ${imageSource}`);
             return runFragment;
           }
         } catch (error) {
+          // eslint-disable-next-line no-console
           console.warn(`[BUILDRUN] Failed to get image size for ${imageSource}: ${error.message}`);
           return runFragment;
         }
@@ -1055,6 +1383,7 @@ const buildRun = async (vNode, attributes, docxDocumentInstance) => {
         attributes.originalWidth = imageProperties.width;
         attributes.originalHeight = imageProperties.height;
 
+        // eslint-disable-next-line no-use-before-define
         computeImageDimensions(vNode, attributes);
       }
 
@@ -1085,6 +1414,7 @@ const buildRunOrRuns = async (vNode, attributes, docxDocumentInstance) => {
         attributes
       );
 
+      // eslint-disable-next-line no-use-before-define
       const tempRunFragments = await buildRunOrHyperLink(
         childVNode,
         isVNode(childVNode) && childVNode.tagName === 'img'
@@ -1274,14 +1604,16 @@ const buildParagraphProperties = (attributes, docxDocumentInstance) => {
           delete attributes.textAlign;
           break;
         case 'backgroundColor':
-          // Add shading to Paragraph Properties only if display is block
-          // Essentially if background color needs to be across the row
-          if (attributes.display === 'block') {
+          // Add shading to Paragraph Properties for block or paragraph-level elements
+          // Applies background color as paragraph shading (w:shd)
+          {
             const shadingFragment = buildShading(attributes[key]);
             paragraphPropertiesFragment.import(shadingFragment);
             // FIXME: Inner padding in case of shaded paragraphs.
-            const paragraphBorderFragment = buildParagraphBorder();
-            paragraphPropertiesFragment.import(paragraphBorderFragment);
+            if (attributes.display === 'block') {
+              const paragraphBorderFragment = buildParagraphBorder();
+              paragraphPropertiesFragment.import(paragraphBorderFragment);
+            }
             // eslint-disable-next-line no-param-reassign
             delete attributes.backgroundColor;
           }
@@ -1297,10 +1629,95 @@ const buildParagraphProperties = (attributes, docxDocumentInstance) => {
           // eslint-disable-next-line no-param-reassign
           delete attributes.indentation;
           break;
+        case 'textIndent':
+          // text-indent maps to w:ind firstLine attribute
+          const textIndentFragment = fragment({ namespaceAlias: { w: namespaces.w } })
+            .ele('@w', 'ind')
+            .att('@w', 'firstLine', attributes[key])
+            .up();
+          paragraphPropertiesFragment.import(textIndentFragment);
+          delete attributes.textIndent;
+          break;
+        case 'pageBreakBefore':
+          if (attributes[key]) {
+            const pbFragment = buildPageBreakBefore();
+            paragraphPropertiesFragment.import(pbFragment);
+          }
+          delete attributes.pageBreakBefore;
+          break;
+        case 'pageBreakAfter':
+          // page-break-after is handled by inserting a separate page break paragraph
+          // after the current content. Mark it so the caller can add the break.
+          // We store it but don't emit it here - it needs a trailing paragraph.
+          // For now, skip deletion so it can be used later.
+          break;
         case 'textDecoration':
           const textDecorationFragment = buildTextDecoration(attributes[key]);
           paragraphPropertiesFragment.import(textDecorationFragment);
           // we don't delete attributes.textDecoration so that it could be inherited by children nodes.
+          break;
+        case 'border':
+        case 'border-top':
+        case 'border-bottom':
+        case 'border-left':
+        case 'border-right':
+          // Individual paragraph borders → w:pBdr
+          // Parse CSS border shorthand: "1px solid #333" → size, style, color
+          const borderVal = attributes[key];
+          if (borderVal) {
+            const borderParts = borderVal.split(/\s+/);
+            let bSize = 4; // default half-points
+            let bColor = 'auto';
+            let bStyle = 'single';
+            borderParts.forEach((part) => {
+              if (pixelRegex.test(part) || pointRegex.test(part)) {
+                const numMatch = part.match(/[\d.]+/);
+                if (numMatch) bSize = Math.max(1, Math.round(parseFloat(numMatch[0]) * 8)); // px to eighths of a point
+              } else if (
+                [
+                  'solid',
+                  'dashed',
+                  'dotted',
+                  'double',
+                  'groove',
+                  'ridge',
+                  'inset',
+                  'outset',
+                  'none',
+                  'hidden',
+                ].includes(part)
+              ) {
+                const styleMap = {
+                  solid: 'single',
+                  dashed: 'dashed',
+                  dotted: 'dotted',
+                  double: 'double',
+                  none: 'none',
+                  hidden: 'none',
+                };
+                bStyle = styleMap[part] || 'single';
+              } else if (isColorCode(part) || /^[a-zA-Z]+$/.test(part)) {
+                bColor = fixupColorCode(part);
+              }
+            });
+            if (bStyle !== 'none') {
+              const sides =
+                key === 'border'
+                  ? ['top', 'bottom', 'left', 'right']
+                  : [key.replace('border-', '')];
+              const pBdrFragment = fragment({ namespaceAlias: { w: namespaces.w } }).ele(
+                '@w',
+                'pBdr'
+              );
+              sides.forEach((side) => {
+                const sideFragment = buildBorder(side, bSize, 1, bColor, bStyle);
+                pBdrFragment.import(sideFragment);
+              });
+              pBdrFragment.up();
+              paragraphPropertiesFragment.import(pBdrFragment);
+            }
+          }
+          delete attributes[key];
           break;
       }
     });
@@ -1527,6 +1944,7 @@ const processImageSource = async (docxDocumentInstance, vNode, imageSource, logC
     // Already processed, extract base64 part
     const parsed = parseDataUrl(imageSource);
     if (!parsed) {
+      // eslint-disable-next-line no-console
       console.warn(`[${logContext}] Invalid data URL format: ${imageSource}`);
       return null;
     }
@@ -1539,6 +1957,7 @@ const processImageSource = async (docxDocumentInstance, vNode, imageSource, logC
 
     if (!base64Uri) {
       // Download failed after retries, skip this image
+      // eslint-disable-next-line no-console
       console.warn(`[${logContext}] Skipping image due to download failure: ${imageSource}`);
       return null;
     }
@@ -1549,6 +1968,7 @@ const processImageSource = async (docxDocumentInstance, vNode, imageSource, logC
     // Extract base64 part from data URL
     const parsed = parseDataUrl(base64Uri);
     if (!parsed) {
+      // eslint-disable-next-line no-console
       console.warn(`[${logContext}] Invalid cached data URL: ${base64Uri}`);
       return null;
     }
@@ -1557,6 +1977,7 @@ const processImageSource = async (docxDocumentInstance, vNode, imageSource, logC
 
   // Validate base64String before creating buffer
   if (!base64String) {
+    // eslint-disable-next-line no-console
     console.warn(`[${logContext}] No valid base64 string for image: ${imageSource}`);
     return null;
   }
@@ -1565,6 +1986,7 @@ const processImageSource = async (docxDocumentInstance, vNode, imageSource, logC
 
   // Validate buffer before calling sizeOf
   if (!imageBuffer || imageBuffer.length === 0) {
+    // eslint-disable-next-line no-console
     console.warn(`[${logContext}] Empty image buffer for: ${imageSource}`);
     return null;
   }
@@ -1573,10 +1995,12 @@ const processImageSource = async (docxDocumentInstance, vNode, imageSource, logC
   try {
     imageProperties = sizeOf(imageBuffer);
     if (!imageProperties || !imageProperties.width || !imageProperties.height) {
+      // eslint-disable-next-line no-console
       console.warn(`[${logContext}] Invalid image properties for: ${imageSource}`);
       return null;
     }
   } catch (error) {
+    // eslint-disable-next-line no-console
     console.warn(`[${logContext}] Failed to get image size for ${imageSource}: ${error.message}`);
     return null;
   }
@@ -1626,6 +2050,15 @@ const buildParagraph = async (vNode, attributes, docxDocumentInstance) => {
         'a',
         'code',
         'pre',
+        'cite',
+        'dfn',
+        'var',
+        'small',
+        'samp',
+        'kbd',
+        'abbr',
+        'time',
+        'address',
       ].includes(vNode.tagName)
     ) {
       const runOrHyperlinkFragments = await buildRunOrHyperLink(
@@ -1668,6 +2101,7 @@ const buildParagraph = async (vNode, attributes, docxDocumentInstance) => {
           );
 
           if (!result) {
+            // eslint-disable-next-line no-continue
             continue;
           }
 
@@ -1738,6 +2172,22 @@ const buildParagraph = async (vNode, attributes, docxDocumentInstance) => {
     }
   }
   paragraphFragment.up();
+
+  // Handle page-break-after: insert a separate paragraph with a page break
+  if (modifiedAttributes.pageBreakAfter) {
+    const wrapperFragment = fragment({ namespaceAlias: { w: namespaces.w } });
+    wrapperFragment.import(paragraphFragment);
+    const breakParagraph = fragment({ namespaceAlias: { w: namespaces.w } })
+      .ele('@w', 'p')
+      .ele('@w', 'r')
+      .ele('@w', 'br')
+      .att('@w', 'type', 'page')
+      .up()
+      .up()
+      .up();
+    wrapperFragment.import(breakParagraph);
+    return wrapperFragment;
+  }
 
   return paragraphFragment;
 };
@@ -2206,6 +2656,7 @@ const fixupTableCellBorder = (
   // for columnIndexEquivalentLast, we have already processed right attributes
   // for rowIndexEquivalentFirst, we have already processed top attributes
   // for rowIndexEquivalentLast, we have already processed bottom attributes
+  /* eslint-disable no-continue, no-restricted-syntax */
   for (const tableCellStyle of tableCellStyleKeys) {
     if (tableCellStyle === 'border') {
       if (tableCellStyles[tableCellStyle] === 'none' || tableCellStyles[tableCellStyle] === 0) {
@@ -2331,6 +2782,7 @@ const fixupTableCellBorder = (
       // already processed
       if (rowIndexEquivalentLast !== -1) continue;
       // checking for both 0 and '0'
+      // eslint-disable-next-line eqeqeq
       if (tableCellStyles[tableCellStyle] == '0') {
         attributes.tableCellBorder = {
           ...attributes.tableCellBorder,
@@ -2353,6 +2805,7 @@ const fixupTableCellBorder = (
       // already processed
       if (columnIndexEquivalentFirst !== -1) continue;
       // checking for both 0 and '0'
+      // eslint-disable-next-line eqeqeq
       if (tableCellStyles[tableCellStyle] == '0') {
         attributes.tableCellBorder = {
           ...attributes.tableCellBorder,
@@ -2376,6 +2829,7 @@ const fixupTableCellBorder = (
       if (columnIndexEquivalentLast !== -1) continue;
 
       // checking for both 0 and '0'
+      // eslint-disable-next-line eqeqeq
       if (tableCellStyles[tableCellStyle] == '0') {
         attributes.tableCellBorder = {
           ...attributes.tableCellBorder,
@@ -2514,6 +2968,7 @@ const fixupTableCellBorder = (
       attributes.tableCellBorder.bottom = borderSizeParser(tableCellStyles[tableCellStyle]);
     }
   }
+  /* eslint-enable no-continue, no-restricted-syntax */
 };
 
 /**
@@ -2613,6 +3068,7 @@ const buildTableCell = async (
       const spanObject = { rowSpan: vNode.properties.rowSpan - 1, colSpan: 0 };
       const { style } = vNode.properties;
       const styleKeys = style ? Object.keys(style) : [];
+      // eslint-disable-next-line no-restricted-syntax
       for (const styleKey of styleKeys) {
         // separately set the properties for 4 directions in case shorthands are given
         // as we use directional properties indiviually to generate border
@@ -2694,6 +3150,7 @@ const buildTableCell = async (
       // no style attribute was given to the table cell
 
       // Table tag was given the border attribute
+      // eslint-disable-next-line no-lonely-if
       if (attributes.isTableBorderAttributeGiven) {
         // If border-style to table was kept as none
         // In those cases, we need to revert back to original border style
@@ -2761,6 +3218,18 @@ const buildTableCell = async (
   }
   const tableCellPropertiesFragment = buildTableCellProperties(modifiedAttributes, parentWidth);
   tableCellFragment.import(tableCellPropertiesFragment);
+
+  // Strip cell-level CSS properties so they don't leak into child paragraphs.
+  // border → already handled by w:tcBorders; padding → already handled by w:tblCellMar
+  delete modifiedAttributes.border;
+  delete modifiedAttributes['border-top'];
+  delete modifiedAttributes['border-bottom'];
+  delete modifiedAttributes['border-left'];
+  delete modifiedAttributes['border-right'];
+  delete modifiedAttributes.beforeSpacing;
+  delete modifiedAttributes.afterSpacing;
+  delete modifiedAttributes.indentation;
+
   if (vNodeHasChildren(vNode)) {
     for (let index = 0; index < vNode.children.length; index++) {
       const childVNode = vNode.children[index];
@@ -2842,6 +3311,7 @@ const buildRowSpanCell = (rowSpanMap, columnIndex, attributes, tableBorderOption
 
     const spanObjectKeys = Object.keys(spanObject);
 
+    // eslint-disable-next-line no-restricted-syntax
     for (const spanObjectKey of spanObjectKeys) {
       if (spanObject === 'border') {
         const [borderSize, borderStroke, borderColor] = cssBorderParser(
@@ -2918,10 +3388,10 @@ const buildRowSpanCell = (rowSpanMap, columnIndex, attributes, tableBorderOption
           ...cellProperties.tableCellBorder.colors,
           top: fixupColorCode(spanObject[spanObjectKey]),
         };
-      } else if (spanObjectKey === 'border-top-color') {
-        tableBorders.colors = {
-          ...tableBorders.colors,
-          top: fixupColorCode(spanObject[spanObjectKey]),
+      } else if (spanObjectKey === 'border-bottom-color') {
+        cellProperties.tableCellBorder.colors = {
+          ...cellProperties.tableCellBorder.colors,
+          bottom: fixupColorCode(spanObject[spanObjectKey]),
         };
       } else if (spanObjectKey === 'border-style') {
         cellProperties.tableCellBorder = {
@@ -3013,6 +3483,16 @@ const buildTableRowProperties = (attributes) => {
             delete attributes.rowCantSplit;
           }
           break;
+        case 'isHeaderRow':
+          if (attributes.isHeaderRow) {
+            const tblHeaderFragment = fragment({ namespaceAlias: { w: namespaces.w } })
+              .ele('@w', 'tblHeader')
+              .up();
+            tableRowPropertiesFragment.import(tblHeaderFragment);
+            // eslint-disable-next-line no-param-reassign
+            delete attributes.isHeaderRow;
+          }
+          break;
       }
     });
   }
@@ -3094,6 +3574,7 @@ const buildTableRow = async (
       const tableRowStyles = vNode.properties.style;
       const tableRowStlyeKeys = Object.keys(tableRowStyles);
 
+      // eslint-disable-next-line no-restricted-syntax
       for (const tableRowStlyeKey of tableRowStlyeKeys) {
         const tableRowStyleValue = tableRowStyles[tableRowStlyeKey];
         if (tableRowStlyeKey === 'background-color' || tableRowStlyeKey === 'background') {
@@ -3123,7 +3604,7 @@ const buildTableRow = async (
 
   const columnIndex = { index: 0 };
 
-  const tableWidth = modifiedAttributes.width;
+  const tableWidth = modifiedAttributes.tableWidthSaved || modifiedAttributes.width;
   if (vNodeHasChildren(vNode)) {
     const tableColumns = vNode.children.filter((childVNode) =>
       ['td', 'th'].includes(childVNode.tagName)
@@ -3132,6 +3613,17 @@ const buildTableRow = async (
 
     // eslint-disable-next-line no-restricted-syntax
     for (const column of tableColumns) {
+      // Apply default th styles: bold and center alignment (per HTML spec)
+      if (column.tagName === 'th') {
+        if (!column.properties) column.properties = {};
+        if (!column.properties.style) column.properties.style = {};
+        if (!column.properties.style['font-weight']) {
+          column.properties.style['font-weight'] = 'bold';
+        }
+        if (!column.properties.style['text-align']) {
+          column.properties.style['text-align'] = 'center';
+        }
+      }
       const rowSpanCellFragments = buildRowSpanCell(
         rowSpanMap,
         columnIndex,
@@ -3160,7 +3652,7 @@ const buildTableRow = async (
         columnIndexEquivalent,
         tableWidth
       );
-      columnIndex.index++;
+      columnIndex.index += 1;
 
       tableRowFragment.import(tableCellFragment);
     }
@@ -3212,18 +3704,52 @@ const buildTableGrid = (vNode, attributes) => {
 const buildTableGridFromTableRow = (vNode, attributes) => {
   const tableGridFragment = fragment({ namespaceAlias: { w: namespaces.w } }).ele('@w', 'tblGrid');
   if (vNodeHasChildren(vNode)) {
-    const numberOfGridColumns = vNode.children.reduce((accumulator, childVNode) => {
+    const columns = vNode.children.filter((c) => ['td', 'th'].includes(c.tagName));
+    const numberOfGridColumns = columns.reduce((acc, childVNode) => {
       const colSpan =
         childVNode.properties.colSpan ||
         (childVNode.properties.style && childVNode.properties.style['column-span']);
-
-      return accumulator + (colSpan ? parseInt(colSpan) : 1);
+      return acc + (colSpan ? parseInt(colSpan) : 1);
     }, 0);
-    const gridWidth = attributes.maximumWidth / numberOfGridColumns;
 
-    for (let index = 0; index < numberOfGridColumns; index++) {
-      const tableGridColFragment = buildTableGridCol(gridWidth);
-      tableGridFragment.import(tableGridColFragment);
+    // Try to use individual cell width styles for accurate grid column widths
+    const tableWidth = attributes.width || attributes.maximumWidth;
+    const cellWidths = columns.map((col) => {
+      const style = col.properties && col.properties.style;
+      if (style && style.width) {
+        const w = fixupColumnWidth(style.width, tableWidth);
+        if (w && !Number.isNaN(Number(w)) && w > 0) return w;
+      }
+      return null;
+    });
+
+    const hasExplicitWidths = cellWidths.some((w) => w !== null);
+    if (hasExplicitWidths) {
+      // Fill in missing widths with equal share of remaining space
+      const totalExplicit = cellWidths.reduce((s, w) => s + (w || 0), 0);
+      const missingCount = cellWidths.filter((w) => w === null).length;
+      const remaining = Math.max(0, tableWidth - totalExplicit);
+      const defaultWidth =
+        missingCount > 0 ? remaining / missingCount : tableWidth / numberOfGridColumns;
+
+      for (let i = 0; i < cellWidths.length; i++) {
+        const colSpan =
+          columns[i].properties.colSpan ||
+          (columns[i].properties.style && columns[i].properties.style['column-span']);
+        const spans = colSpan ? parseInt(colSpan) : 1;
+        const w = cellWidths[i] || defaultWidth;
+        for (let s = 0; s < spans; s++) {
+          const tableGridColFragment = buildTableGridCol(Math.round(w / spans));
+          tableGridFragment.import(tableGridColFragment);
+        }
+      }
+    } else {
+      // Fall back to equal division
+      const gridWidth = (tableWidth || attributes.maximumWidth) / numberOfGridColumns;
+      for (let index = 0; index < numberOfGridColumns; index++) {
+        const tableGridColFragment = buildTableGridCol(gridWidth);
+        tableGridFragment.import(tableGridColFragment);
+      }
     }
   }
   tableGridFragment.up();
@@ -3403,6 +3929,7 @@ const buildTable = async (vNode, attributes, docxDocumentInstance) => {
     }
 
     if (Object.keys(tableStyles).length !== 0) {
+      // eslint-disable-next-line no-restricted-syntax
       for (const tableStyle of Object.keys(tableStyles)) {
         if (tableStyle === 'border') {
           const [cssSize, cssStroke, cssColor] = cssBorderParser(
@@ -3584,8 +4111,15 @@ const buildTable = async (vNode, attributes, docxDocumentInstance) => {
       );
     }
   }
+  // Save table width before buildTableProperties deletes it
+  const savedTableWidth = modifiedAttributes.width;
   const tablePropertiesFragment = buildTableProperties(modifiedAttributes);
   tableFragment.import(tablePropertiesFragment);
+  // Store as tableWidthSaved so row/cell builders can use it for percentage calculations
+  // Using a different key to avoid conflict with cell-level 'width' processing
+  if (savedTableWidth) {
+    modifiedAttributes.tableWidthSaved = savedTableWidth;
+  }
 
   // We need to avoid building table grid multiple times
   // So we use a bool variable to check if in for loop
@@ -3612,9 +4146,11 @@ const buildTable = async (vNode, attributes, docxDocumentInstance) => {
               tableFragment.import(tableGridFragment);
               isTableGridBuilt = false;
             }
+            // Mark thead rows as header rows so they repeat on every page
+            const headerRowAttributes = { ...modifiedAttributes, isHeaderRow: true };
             const tableRowFragment = await buildTableRow(
               grandChildVNode,
-              modifiedAttributes,
+              headerRowAttributes,
               rowSpanMap,
               docxDocumentInstance,
               setBorderIndexEquivalent(iteratorIndex, childVNode.children.length)
@@ -3624,7 +4160,7 @@ const buildTable = async (vNode, attributes, docxDocumentInstance) => {
             }
           }
         }
-      } else if (childVNode.tagName === 'tbody') {
+      } else if (childVNode.tagName === 'tbody' || childVNode.tagName === 'tfoot') {
         for (let iteratorIndex = 0; iteratorIndex < childVNode.children.length; iteratorIndex++) {
           const grandChildVNode = childVNode.children[iteratorIndex];
           if (grandChildVNode.tagName === 'tr') {
@@ -4031,7 +4567,9 @@ export {
   buildBold,
   buildItalics,
   buildUnderline,
+  buildHorizontalRule,
   processImageSource,
   buildDrawing,
   fixupLineHeight,
+  fixupColorCode,
 };

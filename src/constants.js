@@ -153,6 +153,7 @@ const defaultDocumentOptions = {
   direction: defaultDirection,
   preprocessing: {
     skipHTMLMinify: false,
+    skipCSSPreprocessing: false, // 新增: 控制是否跳过CSS预处理
   },
   imageProcessing: {
     maxRetries: 2,
