@@ -3,8 +3,6 @@ import json from '@rollup/plugin-json';
 import commonjs from '@rollup/plugin-commonjs';
 import { terser } from 'rollup-plugin-terser';
 import cleaner from 'rollup-plugin-cleaner';
-import builtins from 'rollup-plugin-node-builtins';
-import nodePolyfills from 'rollup-plugin-polyfill-node';
 
 import * as meta from './package.json';
 
@@ -16,12 +14,14 @@ const banner = `// ${meta.homepage} v${meta.version} Copyright ${new Date().getF
 // Node.js / Library build configuration (ESM and UMD)
 const libraryConfig = {
   input: 'index.js',
-  external: ['color-name', 'jszip', 'xmlbuilder2', 'html-entities', 'lru-cache', 'htmlparser2', 'sharp'],
+  external: ['color-name', 'html-to-vdom', 'jszip', 'virtual-dom', 'xmlbuilder2', 'html-entities', 'lru-cache', 'htmlparser2', 'sharp'],
   plugins: [
-    resolve(),
+    resolve({
+      browser: true,
+      preferBuiltins: false
+    }),
     json(),
     commonjs(),
-    builtins(),
     terser({
       mangle: false,
     }),
@@ -66,7 +66,6 @@ const browserConfig = {
     }),
     json(),
     commonjs(),
-    nodePolyfills(),
     terser({
       mangle: isProduction,
       compress: isProduction,

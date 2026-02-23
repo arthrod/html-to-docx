@@ -46,6 +46,9 @@
   "module": "dist/html-to-docx.esm.js",
   "browser": "dist/html-to-docx.browser.js",
   "types": "index.d.ts",
+  "browser": {
+    "image-to-base64": false
+  },
   "files": [
     "dist",
     "scripts/postinstall.js",
@@ -144,8 +147,6 @@
     "prettier": "^2.4.1",
     "rollup": "^2.62.0",
     "rollup-plugin-cleaner": "^1.0.0",
-    "rollup-plugin-node-builtins": "^2.1.2",
-    "rollup-plugin-polyfill-node": "^0.13.0",
     "rollup-plugin-terser": "^7.0.2",
     "standard-version": "^9.3.1",
     "ts-node": "^10.9.2",
@@ -164,7 +165,8 @@
     "lru-cache": "^10.4.3",
     "mime-types": "^2.1.35",
     "nanoid": "^3.1.25",
-    "xmlbuilder2": "2.1.2"
+    "virtual-dom": "^2.1.1",
+    "xmlbuilder2": "3.1.1"
   },
   "overrides": {
     "bl": "^1.2.3",
