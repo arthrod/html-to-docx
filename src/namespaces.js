@@ -14,6 +14,8 @@ const namespaces = {
   w: 'http://schemas.openxmlformats.org/wordprocessingml/2006/main',
   w10: 'urn:schemas-microsoft-com:office:word',
   wp: 'http://schemas.openxmlformats.org/drawingml/2006/wordprocessingDrawing',
+  w14: 'http://schemas.microsoft.com/office/word/2010/wordml',
+  w15: 'http://schemas.microsoft.com/office/word/2012/wordml',
   wne: 'http://schemas.microsoft.com/office/word/2006/wordml',
   xsd: 'http://www.w3.org/2001/XMLSchema',
   xsi: 'http://www.w3.org/2001/XMLSchema-instance',
@@ -25,6 +27,8 @@ const namespaces = {
   headers: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/header',
   footers: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/footer',
   themes: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme',
+  comments: 'http://schemas.openxmlformats.org/officeDocument/2006/relationships/comments',
+  commentsExtended: 'http://schemas.microsoft.com/office/2011/relationships/commentsExtended',
   coreProperties: 'http://schemas.openxmlformats.org/package/2006/metadata/core-properties',
   officeDocumentRelation:
     'http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument',

@@ -11,12 +11,14 @@ import {
   generateNumberingXMLTemplate,
   generateThemeXML,
   documentRelsXML as documentRelsXMLString,
-  settingsXML as settingsXMLString,
+  generateSettingsXML as generateSettingsXMLTemplate,
   webSettingsXML as webSettingsXMLString,
   contentTypesXML as contentTypesXMLString,
   fontTableXML as fontTableXMLString,
   genericRelsXML as genericRelsXMLString,
   generateDocumentTemplate,
+  commentsXML as commentsXMLString,
+  commentsExtendedXML as commentsExtendedXMLString,
 } from './schemas';
 import { convertVTreeToXML } from './helpers';
 import namespaces from './namespaces';
@@ -36,6 +38,8 @@ import {
   hyperlinkType,
   documentFileName,
   imageType,
+  commentType,
+  commentsExtendedType,
   defaultDocumentOptions,
 } from './constants';
 import ListStyleBuilder from './utils/list';
@@ -211,6 +215,17 @@ class DocxDocument {
     this.footerObjects = [];
     this.documentXML = null;
 
+    // Tracked changes state
+    this.lastRevisionId = 0;
+    this.hasTrackedChanges = false;
+
+    // Comments state
+    this.commentObjects = [];
+    this.commentExtendedObjects = [];
+    this.hasComments = false;
+    this.hasThreadedComments = false;
+    this.lastParaIdCounter = 0;
+
     this.generateContentTypesXML = this.generateContentTypesXML.bind(this);
     this.generateDocumentXML = this.generateDocumentXML.bind(this);
     this.generateCoreXML = this.generateCoreXML.bind(this);
@@ -226,6 +241,8 @@ class DocxDocument {
     this.generateHeaderXML = this.generateHeaderXML.bind(this);
     this.generateFooterXML = this.generateFooterXML.bind(this);
     this.generateSectionXML = generateSectionXML.bind(this);
+    this.generateCommentsXML = this.generateCommentsXML.bind(this);
+    this.generateCommentsExtendedXML = this.generateCommentsExtendedXML.bind(this);
 
     this.ListStyleBuilder = new ListStyleBuilder(properties.numbering);
   }
@@ -235,6 +252,28 @@ class DocxDocument {
 
     generateContentTypesFragments(contentTypesXML, 'header', this.headerObjects);
     generateContentTypesFragments(contentTypesXML, 'footer', this.footerObjects);
+
+    if (this.hasComments) {
+      contentTypesXML.root().import(
+        fragment({ defaultNamespace: { ele: namespaces.contentTypes } })
+          .ele('Override')
+          .att('PartName', '/word/comments.xml')
+          .att(
+            'ContentType',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.comments+xml'
+          )
+          .up()
+      );
+    }
+    if (this.hasComments) {
+      contentTypesXML.root().import(
+        fragment({ defaultNamespace: { ele: namespaces.contentTypes } })
+          .ele('Override')
+          .att('PartName', '/word/commentsExtended.xml')
+          .att('ContentType', 'application/vnd.ms-word.commentsExtended+xml')
+          .up()
+      );
+    }
 
     return contentTypesXML.toString({ prettyPrint: true });
   }
@@ -290,9 +329,10 @@ class DocxDocument {
     );
   }
 
-  // eslint-disable-next-line class-methods-use-this
   generateSettingsXML() {
-    return generateXMLString(settingsXMLString);
+    return generateXMLString(
+      generateSettingsXMLTemplate({ trackRevisions: this.hasTrackedChanges })
+    );
   }
 
   // eslint-disable-next-line class-methods-use-this
@@ -307,7 +347,8 @@ class DocxDocument {
         this.fontSize,
         this.complexScriptFontSize,
         this.lang,
-        this.heading
+        this.heading,
+        this.hasComments
       ),
       this.direction
     );
@@ -617,6 +658,12 @@ class DocxDocument {
       case themeFileType:
         relationshipType = namespaces.themes;
         break;
+      case commentType:
+        relationshipType = namespaces.comments;
+        break;
+      case commentsExtendedType:
+        relationshipType = namespaces.commentsExtended;
+        break;
     }
 
     relationshipObject.rels.push({
@@ -635,6 +682,104 @@ class DocxDocument {
 
   generateFooterXML(vTree) {
     return this.generateSectionXML(vTree, 'footer');
+  }
+
+  createRevisionId() {
+    this.lastRevisionId += 1;
+    return this.lastRevisionId;
+  }
+
+  generateParaId() {
+    this.lastParaIdCounter += 1;
+    return this.lastParaIdCounter.toString(16).toUpperCase().padStart(8, '0');
+  }
+
+  addComment({ id, author, initials, date, text, parentId, done }) {
+    this.hasComments = true;
+    const paraId = this.generateParaId();
+    const textId = this.generateParaId();
+    const commentObj = { id, author, initials, date, text, paraId, textId };
+    this.commentObjects.push(commentObj);
+
+    const parentComment =
+      parentId != null
+        ? this.commentObjects.find((c) => c.id === parseInt(parentId, 10))
+        : null;
+    if (parentComment || (done && done !== '0')) {
+      this.hasThreadedComments = true;
+    }
+    this.commentExtendedObjects.push({
+      paraId,
+      parentParaId: parentComment ? parentComment.paraId : null,
+      done: done || '0',
+    });
+
+    return commentObj;
+  }
+
+  generateCommentsXML() {
+    if (!this.hasComments) return null;
+    const commentsXML = create({ encoding: 'UTF-8', standalone: true }, commentsXMLString);
+
+    this.commentObjects.forEach(({ id, author, initials, date, text, paraId, textId }) => {
+      const commentFragment = fragment({
+        namespaceAlias: { w: namespaces.w, w14: namespaces.w14 },
+      })
+        .ele('@w', 'comment')
+        .att('@w', 'id', String(id))
+        .att('@w', 'author', author)
+        .att('@w', 'initials', initials)
+        .att('@w', 'date', date)
+        .ele('@w', 'p')
+        .att('@w14', 'paraId', paraId)
+        .att('@w14', 'textId', textId)
+        .ele('@w', 'pPr')
+        .ele('@w', 'pStyle')
+        .att('@w', 'val', 'CommentText')
+        .up()
+        .up()
+        .ele('@w', 'r')
+        .ele('@w', 'rPr')
+        .ele('@w', 'rStyle')
+        .att('@w', 'val', 'CommentReference')
+        .up()
+        .up()
+        .ele('@w', 'annotationRef')
+        .up()
+        .up()
+        .ele('@w', 'r')
+        .ele('@w', 't')
+        .txt(text)
+        .up()
+        .up()
+        .up()
+        .up();
+
+      commentsXML.root().import(commentFragment);
+    });
+
+    return commentsXML.toString({ prettyPrint: true });
+  }
+
+  generateCommentsExtendedXML() {
+    if (!this.hasComments) return null;
+    const extXML = create({ encoding: 'UTF-8', standalone: true }, commentsExtendedXMLString);
+
+    this.commentExtendedObjects.forEach(({ paraId, parentParaId, done }) => {
+      const exFragment = fragment({ namespaceAlias: { w15: namespaces.w15 } })
+        .ele('@w15', 'commentEx')
+        .att('@w15', 'paraId', paraId)
+        .att('@w15', 'done', done);
+
+      if (parentParaId) {
+        exFragment.att('@w15', 'paraIdParent', parentParaId);
+      }
+      exFragment.up();
+
+      extXML.root().import(exFragment);
+    });
+
+    return extXML.toString({ prettyPrint: true });
   }
 }
 

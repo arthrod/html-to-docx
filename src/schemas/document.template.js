@@ -15,6 +15,8 @@ const generateDocumentTemplate = (width, height, orientation, margins) => `
         xmlns:w="${namespaces.w}"
         xmlns:w10="${namespaces.w10}"
         xmlns:wp="${namespaces.wp}"
+        xmlns:w14="${namespaces.w14}"
+        xmlns:w15="${namespaces.w15}"
         xmlns:wne="${namespaces.wne}"
         >
         <w:body>

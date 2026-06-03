@@ -2,6 +2,8 @@
 
 # Output Example.docx
 *.docx
+# Allow test fixture DOCX files
+!tests/fixtures/*.docx
 
 # Logs
 logs

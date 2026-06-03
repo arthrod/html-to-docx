@@ -227,15 +227,52 @@ async function findXMLEquivalent(docxDocumentInstance, vNode, xmlFragment, image
       );
       xmlFragment.import(headingFragment);
       return;
+    case 'ins':
+    case 'del':
+      if (
+        vNode.properties &&
+        vNode.properties.attributes &&
+        vNode.properties.attributes['data-author']
+      ) {
+        const trackedFragment = await xmlBuilder.buildTrackedChange(
+          vNode,
+          {},
+          docxDocumentInstance
+        );
+        xmlFragment.import(trackedFragment);
+        return;
+      }
+      // Fall through to visual-only rendering (underline/strikethrough)
+      // eslint-disable-next-line no-fallthrough
     case 'span':
+      if (
+        vNode.properties &&
+        vNode.properties.attributes &&
+        vNode.properties.attributes.class
+      ) {
+        const spanClass = vNode.properties.attributes.class;
+        if (spanClass === 'comment-start') {
+          const commentStartFrag = xmlBuilder.buildCommentRangeStart(
+            vNode,
+            docxDocumentInstance
+          );
+          xmlFragment.import(commentStartFrag);
+          return;
+        }
+        if (spanClass === 'comment-end') {
+          const commentEndFrag = xmlBuilder.buildCommentRangeEnd(vNode);
+          xmlFragment.import(commentEndFrag);
+          return;
+        }
+      }
+      // Fall through to paragraph rendering
+      // eslint-disable-next-line no-fallthrough
     case 'strong':
     case 'b':
     case 'em':
     case 'i':
     case 'u':
-    case 'ins':
     case 'strike':
-    case 'del':
     case 's':
     case 'sub':
     case 'sup':
